@@ -160,6 +160,16 @@ class TagGame extends BaseGame {
         }
         break;
 
+      // ── Performer signals they are done with the skit ───────
+      case 'speaker_done': {
+        if (this.phase !== 'skit') break;
+        const isPerformer = this.currentPerformers.some(p => p.id === player.id);
+        if (!isPerformer) break;
+        this.clearTimer();
+        this._beginPerfVote();
+        break;
+      }
+
       // ── Call out a performer's tag during skit ─────────────
       case 'callout_tag':
         if (this.phase === 'skit') {

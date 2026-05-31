@@ -140,6 +140,16 @@ class GslsGame extends BaseGame {
   handlePlayerAction(player, data) {
     switch (data.type) {
 
+      // ── Speaker signals they are done with the current part ─
+      case 'speaker_done': {
+        const speakerPhases = ['part1', 'part2', 'part3_respond'];
+        if (!speakerPhases.includes(this.phase)) break;
+        if (player.id !== this._speakerId()) break;
+        this.clearTimer();
+        this.advance();
+        break;
+      }
+
       case 'cheer':
       case 'boo': {
         const reactionPhases = ['part1','part2','part3','part3_respond','last_stand_debate','last_stand_challenge'];

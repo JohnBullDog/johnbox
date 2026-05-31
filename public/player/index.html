@@ -613,6 +613,7 @@
   <div style="background:var(--card);border-radius:14px;padding:16px;font-size:17px;font-weight:700;line-height:1.5;max-width:360px;width:100%;" id="tg-perf-prompt"></div>
   <div style="font-size:14px;color:var(--muted);">Stay in character:</div>
   <div class="tg-my-tags" id="tg-perf-tags"></div>
+  <button class="btn btn-primary" style="width:100%;max-width:360px;padding:16px;font-size:17px;margin-top:8px;" onclick="tgDonePerforming()">✅ Done Performing</button>
 </div>
 
 <!-- ── TagGame: Voting (call out tags) ───────────────── -->
@@ -656,6 +657,7 @@
   <div id="gsls-sa-forbidden-banner" style="background:#3a1a1a;border:1px solid var(--coral);border-radius:8px;padding:10px 14px;font-size:13px;font-weight:700;color:var(--coral);"></div>
   <div id="gsls-sa-prompt" style="background:var(--card);border-left:4px solid var(--teal);padding:14px;border-radius:10px;font-size:15px;font-weight:600;line-height:1.5;"></div>
   <div style="font-size:22px;font-weight:900;color:var(--teal);text-align:center;" id="gsls-sa-timer">—</div>
+  <button class="btn btn-primary" style="width:100%;padding:16px;font-size:17px;" onclick="gslsSpeakerDone()">✅ Done Speaking</button>
   <!-- Received napkins -->
   <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;" id="gsls-napkin-label" style="display:none;">📜 Napkins from your Aide</div>
   <div id="gsls-napkins" style="display:flex;flex-direction:column;gap:10px;overflow-y:auto;"></div>
@@ -676,6 +678,7 @@
   <div id="gsls-sc-heckles" style="display:flex;flex-direction:column;gap:8px;"></div>
   <div id="gsls-sc-napkins" style="display:flex;flex-direction:column;gap:8px;"></div>
   <div style="font-size:22px;font-weight:900;color:var(--teal);text-align:center;" id="gsls-sc-timer">—</div>
+  <button class="btn btn-primary" style="width:100%;padding:16px;font-size:17px;" onclick="gslsSpeakerDone()">✅ Done Responding</button>
 </div>
 
 <!-- Aide: active screen -->

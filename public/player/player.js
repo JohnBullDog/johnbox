@@ -805,6 +805,12 @@ document.getElementById('tg-btn-spin').addEventListener('click', () => {
   socket.emit('game:action', { type: 'spin' });
 });
 
+function tgDonePerforming() {
+  document.querySelector('#s-tg-performing button.btn-primary').disabled = true;
+  socket.emit('game:action', { type: 'speaker_done' });
+  showWaiting('🎭', 'Skit over!', 'The audience is rating your performance…');
+}
+
 function tgChoosePlayer(targetId) {
   document.querySelectorAll('.tg-choose-btn').forEach(b => b.disabled = true);
   socket.emit('game:action', { type: 'event_choice', targetId });
@@ -1196,6 +1202,12 @@ function gslsHandleLsReveal(d) {
 }
 
 // ── Actions ──────────────────────────────────────────────────
+
+function gslsSpeakerDone() {
+  document.querySelectorAll('#s-gsls-speaker-active button.btn-primary, #s-gsls-speaker-challenge button.btn-primary')
+    .forEach(b => b.disabled = true);
+  socket.emit('game:action', { type: 'speaker_done' });
+}
 
 function gslsReact(type) {
   socket.emit('game:action', { type });
