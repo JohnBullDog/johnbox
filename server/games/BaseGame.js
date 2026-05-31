@@ -67,8 +67,13 @@ class BaseGame {
   clearPlayerAck(socketId) { this._clearAck(socketId); }
 
   // Re-send the last player:phase to a reconnecting player.
+  // Stamps the current server-side timeLeft so the player's timer is accurate.
   syncPlayer(player) {
-    if (player._lastPhase) this.send(player.id, 'player:phase', player._lastPhase);
+    if (!player._lastPhase) return;
+    const phase = this.timeLeft > 0
+      ? { ...player._lastPhase, timeLeft: this.timeLeft }
+      : player._lastPhase;
+    this.send(player.id, 'player:phase', phase);
   }
 
   // Remap player-ID keyed state after a reconnect changes the socket ID.

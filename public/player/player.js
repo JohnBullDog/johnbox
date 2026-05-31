@@ -415,8 +415,14 @@ document.getElementById('btn-submit-drawing').addEventListener('click', () => {
 
 socket.on('error', ({ message }) => {
   if (!myPlayer) {
-    // Error before/during session restore — clear stale session so join screen shows
+    // Failed before joining (bad rejoin token, room gone, etc.)
+    // Clear stale session and drop back to join screen so the player can re-enter.
     localStorage.removeItem(SESSION_KEY);
+    showScreen('s-join');
+    // Only show the error if it's actionable (not just "session expired")
+    const silent = message.toLowerCase().includes('session') || message.toLowerCase().includes('expired');
+    if (!silent) document.getElementById('join-err').textContent = message;
+    return;
   }
   const joinErr = document.getElementById('join-err');
   if (document.getElementById('s-join').classList.contains('active')) {

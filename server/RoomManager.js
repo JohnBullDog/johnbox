@@ -86,11 +86,21 @@ class RoomManager {
     code = (code ?? '').toUpperCase().trim();
     const room = this.rooms.get(code);
 
-    if (!room)                     return socket.emit('error', { message: 'Room not found. Check your code.' });
-    if (room.state !== 'lobby')    return socket.emit('error', { message: 'Game already in progress.' });
-    if (!playerName?.trim())       return socket.emit('error', { message: 'Enter a name to join.' });
+    if (!room)               return socket.emit('error', { message: 'Room not found. Check your code.' });
+    if (!playerName?.trim()) return socket.emit('error', { message: 'Enter a name to join.' });
 
     const name = playerName.trim().slice(0, 20);
+
+    // If the game is already running, allow rejoining by matching name (fallback when
+    // the session token is unavailable — server restart, cleared storage, etc.).
+    if (room.state !== 'lobby') {
+      const existing = [...room.players.values()].find(
+        p => p.name.toLowerCase() === name.toLowerCase()
+      );
+      if (!existing) return socket.emit('error', { message: 'Game already in progress.' });
+      return this._reconnectPlayer(socket, existing, room, code);
+    }
+
     const taken = [...room.players.values()].some(p => p.name.toLowerCase() === name.toLowerCase());
     if (taken) return socket.emit('error', { message: `"${name}" is already taken.` });
 
@@ -169,7 +179,7 @@ class RoomManager {
 
   rejoinRoom(socket, { sessionToken } = {}) {
     const code = this.sessionToCode.get(sessionToken);
-    if (!code) return socket.emit('error', { message: 'Session expired. Please join again.' });
+    if (!code) return socket.emit('error', { message: 'Session expired. Please rejoin.' });
 
     const room = this.rooms.get(code);
     if (!room) {
@@ -177,29 +187,39 @@ class RoomManager {
       return socket.emit('error', { message: 'Room no longer exists.' });
     }
 
-    // Find player by session token in current room.players
     let player = null;
-    let oldSocketId = null;
-    for (const [sid, p] of room.players) {
-      if (p.sessionToken === sessionToken) { player = p; oldSocketId = sid; break; }
+    for (const p of room.players.values()) {
+      if (p.sessionToken === sessionToken) { player = p; break; }
     }
-    if (!player) return socket.emit('error', { message: 'Player not found. Please rejoin.' });
+    if (!player) return socket.emit('error', { message: 'Session expired. Please rejoin.' });
 
-    // Remap socket ID
+    this._reconnectPlayer(socket, player, room, code);
+  }
+
+  // Shared reconnect path used by both rejoinRoom (token) and joinRoom (name fallback).
+  _reconnectPlayer(socket, player, room, code) {
+    const oldSocketId = player.id;
     const newSocketId = socket.id;
+
     if (oldSocketId !== newSocketId) {
       room.players.delete(oldSocketId);
       this.socketToRoom.delete(oldSocketId);
       player.id = newSocketId;
       room.players.set(newSocketId, player);
-      if (room.state === 'playing') {
-        room.game.clearPlayerAck(oldSocketId);  // cancel retry on old socket
+      if (room.game) {
+        room.game.clearPlayerAck(oldSocketId);
         room.game.updatePlayerId(oldSocketId, newSocketId);
       }
     }
+
+    // Issue a fresh session token so the client can use it for future reconnects.
+    if (player.sessionToken) this.sessionToCode.delete(player.sessionToken);
+    const newToken = crypto.randomUUID();
+    player.sessionToken = newToken;
+    this.sessionToCode.set(newToken, code);
+
     this.socketToRoom.set(newSocketId, code);
     socket.join(this._chan(code));
-
     socket.emit('room:rejoined', { code, player, state: room.state });
 
     if (room.state === 'playing') {
