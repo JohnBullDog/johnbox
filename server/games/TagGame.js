@@ -34,6 +34,10 @@ const adjectives = require('../../data/adjectives.json');
 const events     = require('../../data/events.json');
 const tasks      = require('../../data/tasks.json');
 
+function _transferMapKey(map, oldKey, newKey) {
+  if (map.has(oldKey)) { map.set(newKey, map.get(oldKey)); map.delete(oldKey); }
+}
+
 const T_SPIN_RESULT        = 5;
 const T_ADJ_RESULT         = 4;
 const T_EVENT_RESULT       = 5;
@@ -745,6 +749,31 @@ class TagGame extends BaseGame {
       if (callers.has(voterId)) mine[key] = true;
     });
     return mine;
+  }
+
+  updatePlayerId(oldId, newId) {
+    _transferMapKey(this.audienceVotes, oldId, newId);
+    _transferMapKey(this.performanceVotes, oldId, newId);
+
+    // Update callout keys where old ID was the performer
+    for (const key of [...this.callouts.keys()]) {
+      if (key.startsWith(oldId + ':')) {
+        const callers = this.callouts.get(key);
+        this.callouts.delete(key);
+        this.callouts.set(newId + key.slice(oldId.length), callers);
+      }
+    }
+    // Update caller IDs inside callout Sets
+    for (const callers of this.callouts.values()) {
+      if (callers.has(oldId)) { callers.delete(oldId); callers.add(newId); }
+    }
+    // Update failedTags where old ID was the performer
+    for (const key of [...this.failedTags]) {
+      if (key.startsWith(oldId + ':')) {
+        this.failedTags.delete(key);
+        this.failedTags.add(newId + key.slice(oldId.length));
+      }
+    }
   }
 
   _buildWheel() {

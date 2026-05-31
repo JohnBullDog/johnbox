@@ -4,6 +4,7 @@ const socket = io();
 
 // ── State ──────────────────────────────────────────────────
 let myPlayer    = null;
+const SESSION_KEY = 'jb_session';
 let timerMax    = 60;
 let drawColor   = '#1a1a1a';
 let drawSize    = 6;
@@ -33,6 +34,26 @@ function setTimerBar(pct) {
   if (code) document.getElementById('input-code').value = code.toUpperCase();
 })();
 
+// ── Session / reconnect ────────────────────────────────────
+
+socket.on('connect', () => {
+  // Attempt to restore session on every connect (handles both page reload and auto-reconnect)
+  const token = myPlayer?.sessionToken ?? (() => {
+    try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null')?.sessionToken; } catch { return null; }
+  })();
+  if (token) socket.emit('room:rejoin', { sessionToken: token });
+});
+
+socket.on('room:rejoined', ({ code, player, state }) => {
+  myPlayer = player;
+  localStorage.setItem(SESSION_KEY, JSON.stringify({ sessionToken: player.sessionToken }));
+  document.getElementById('lobby-code-display').textContent = code;
+  document.getElementById('lobby-name').textContent = player.name;
+  document.getElementById('lobby-avatar').style.background = player.color;
+  if (state === 'lobby') showScreen('s-lobby');
+  // If state === 'playing', the server follows up with player:phase
+});
+
 // ── Join ───────────────────────────────────────────────────
 
 document.getElementById('btn-join').addEventListener('click', submitJoin);
@@ -55,6 +76,7 @@ function setErr(id, msg) {
 
 socket.on('room:joined', ({ code, player }) => {
   myPlayer = player;
+  localStorage.setItem(SESSION_KEY, JSON.stringify({ sessionToken: player.sessionToken }));
   document.getElementById('lobby-code-display').textContent = code;
   document.getElementById('lobby-name').textContent = player.name;
   document.getElementById('lobby-avatar').style.background = player.color;
@@ -76,6 +98,9 @@ socket.on('timer', ({ timeLeft }) => {
 // ── Phase routing ──────────────────────────────────────────
 
 socket.on('player:phase', (data) => {
+  // Acknowledge receipt so the server stops retrying
+  if (data._msgId != null) socket.emit('phase:ack', { msgId: data._msgId });
+
   // TagGame phases
   switch (data.phase) {
     case 'spin_ready':    tgHandleSpinReady(data);    return;
@@ -214,6 +239,7 @@ function handleResults(d) {
 // ── Game over ──────────────────────────────────────────────
 
 function handleGameOver(d) {
+  localStorage.removeItem(SESSION_KEY);
   const medals = ['🥇', '🥈', '🥉'];
   const badge  = document.getElementById('go-rank-badge');
   badge.textContent = medals[d.myRank - 1] ?? `#${d.myRank}`;
@@ -385,7 +411,10 @@ document.getElementById('btn-submit-drawing').addEventListener('click', () => {
 // ── Error / close handling ─────────────────────────────────
 
 socket.on('error', ({ message }) => {
-  // Try to show error in the active err element, fall back to join error
+  if (!myPlayer) {
+    // Error before/during session restore — clear stale session so join screen shows
+    localStorage.removeItem(SESSION_KEY);
+  }
   const joinErr = document.getElementById('join-err');
   if (document.getElementById('s-join').classList.contains('active')) {
     joinErr.textContent = message;
@@ -395,6 +424,7 @@ socket.on('error', ({ message }) => {
 });
 
 socket.on('room:closed', ({ message }) => {
+  localStorage.removeItem(SESSION_KEY);
   alert(message);
   location.reload();
 });
@@ -744,6 +774,7 @@ function tgHandleSkitResult(d) {
 }
 
 function tgHandleGameOver(d) {
+  localStorage.removeItem(SESSION_KEY);
   const medals = ['🥇','🥈','🥉'];
   const badge  = document.getElementById('go-rank-badge');
   badge.textContent = medals[d.myRank - 1] ?? `#${d.myRank}`;

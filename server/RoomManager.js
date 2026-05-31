@@ -33,6 +33,7 @@
  *   room:closed       { message }
  */
 
+const crypto      = require('crypto');
 const SketchMatch = require('./games/SketchMatch');
 const TagGame     = require('./games/TagGame');
 
@@ -50,8 +51,9 @@ const PLAYER_COLORS = [
 class RoomManager {
   constructor(io) {
     this.io = io;
-    this.rooms = new Map();         // code → room
-    this.socketToRoom = new Map();  // socketId → code
+    this.rooms = new Map();           // code → room
+    this.socketToRoom = new Map();    // socketId → code
+    this.sessionToCode = new Map();   // sessionToken → roomCode
     this._colorIndex = 0;
   }
 
@@ -90,15 +92,18 @@ class RoomManager {
     const taken = [...room.players.values()].some(p => p.name.toLowerCase() === name.toLowerCase());
     if (taken) return socket.emit('error', { message: `"${name}" is already taken.` });
 
+    const sessionToken = crypto.randomUUID();
     const player = {
       id: socket.id,
       name,
       score: 0,
       color: PLAYER_COLORS[this._colorIndex++ % PLAYER_COLORS.length],
+      sessionToken,
     };
 
     room.players.set(socket.id, player);
     this.socketToRoom.set(socket.id, code);
+    this.sessionToCode.set(sessionToken, code);
     socket.join(this._chan(code));
 
     socket.emit('room:joined', { code, player });
@@ -125,6 +130,12 @@ class RoomManager {
     room.game.handlePlayerAction(player, data);
   }
 
+  handlePhaseAck(socket, { msgId } = {}) {
+    const room = this.rooms.get(this.socketToRoom.get(socket.id));
+    if (!room || room.state !== 'playing') return;
+    room.game.ackPlayerPhase(socket.id, msgId);
+  }
+
   advanceGame(socket) {
     const room = this._hostRoom(socket);
     if (!room) return;
@@ -140,13 +151,61 @@ class RoomManager {
     if (!room) return;
 
     if (socket.id === room.hostId) {
+      // Clean up all player sessions then close the room
+      for (const p of room.players.values()) this.sessionToCode.delete(p.sessionToken);
+      if (room.game) room.game.destroy();
       this.io.to(this._chan(code)).emit('room:closed', { message: 'The host disconnected.' });
       this.rooms.delete(code);
       console.log(`[room] ${code} closed (host left)`);
     } else {
-      room.players.delete(socket.id);
-      if (room.state === 'lobby') this._broadcastLobby(room);
+      // Keep the player in the room so they can reconnect via session token.
+      // Just unmap the socket; the player object remains in room.players.
+      const p = room.players.get(socket.id);
+      console.log(`[room] ${p?.name ?? socket.id} disconnected from ${code} (can rejoin)`);
     }
+  }
+
+  rejoinRoom(socket, { sessionToken } = {}) {
+    const code = this.sessionToCode.get(sessionToken);
+    if (!code) return socket.emit('error', { message: 'Session expired. Please join again.' });
+
+    const room = this.rooms.get(code);
+    if (!room) {
+      this.sessionToCode.delete(sessionToken);
+      return socket.emit('error', { message: 'Room no longer exists.' });
+    }
+
+    // Find player by session token in current room.players
+    let player = null;
+    let oldSocketId = null;
+    for (const [sid, p] of room.players) {
+      if (p.sessionToken === sessionToken) { player = p; oldSocketId = sid; break; }
+    }
+    if (!player) return socket.emit('error', { message: 'Player not found. Please rejoin.' });
+
+    // Remap socket ID
+    const newSocketId = socket.id;
+    if (oldSocketId !== newSocketId) {
+      room.players.delete(oldSocketId);
+      this.socketToRoom.delete(oldSocketId);
+      player.id = newSocketId;
+      room.players.set(newSocketId, player);
+      if (room.state === 'playing') {
+        room.game.clearPlayerAck(oldSocketId);  // cancel retry on old socket
+        room.game.updatePlayerId(oldSocketId, newSocketId);
+      }
+    }
+    this.socketToRoom.set(newSocketId, code);
+    socket.join(this._chan(code));
+
+    socket.emit('room:rejoined', { code, player, state: room.state });
+
+    if (room.state === 'playing') {
+      room.game.syncPlayer(player);
+    } else {
+      this._broadcastLobby(room);
+    }
+    console.log(`[room] ${player.name} reconnected to ${code}`);
   }
 
   // ── Helpers ────────────────────────────────────────────────

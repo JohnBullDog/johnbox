@@ -11,7 +11,17 @@
  *   send(socketId, event, data)    → one socket
  *   startTimer(secs, cb)           → emits 'timer' every second, calls cb at 0
  *   clearTimer()
+ *
+ * Reliable delivery for player:phase:
+ *   Every player:phase emission is tagged with a _msgId and retried every
+ *   RETRY_MS until the client sends back phase:ack { msgId }.
+ *   Call ackPlayerPhase(socketId, msgId) when the ack arrives.
+ *   Call clearPlayerAck(socketId) when the socket remaps (reconnect).
+ *   Call destroy() when the room closes to stop all retry timers.
  */
+
+const RETRY_MS = 2000;
+
 class BaseGame {
   constructor(roomCode, io) {
     this.roomCode = roomCode;
@@ -20,12 +30,62 @@ class BaseGame {
     this.phase = 'idle';
     this._timer = null;
     this.timeLeft = 0;
+    this._msgSeq = 0;
+    this._pendingAcks = new Map();  // socketId → { msgId, retryTimer }
   }
 
   get channel() { return `room:${this.roomCode}`; }
 
-  broadcast(event, data)           { this.io.to(this.channel).emit(event, data); }
-  send(socketId, event, data)      { this.io.to(socketId).emit(event, data); }
+  broadcast(event, data) { this.io.to(this.channel).emit(event, data); }
+
+  send(socketId, event, data) {
+    if (event === 'player:phase') {
+      const p = this.players.find(pl => pl.id === socketId);
+      if (p) p._lastPhase = data;
+
+      const msgId = ++this._msgSeq;
+      const payload = { ...data, _msgId: msgId };
+
+      this._clearAck(socketId);
+      this.io.to(socketId).emit('player:phase', payload);
+      const retryTimer = setInterval(() => {
+        this.io.to(socketId).emit('player:phase', payload);
+      }, RETRY_MS);
+      this._pendingAcks.set(socketId, { msgId, retryTimer });
+      return;
+    }
+    this.io.to(socketId).emit(event, data);
+  }
+
+  // Called when the client sends phase:ack { msgId }.
+  ackPlayerPhase(socketId, msgId) {
+    const pending = this._pendingAcks.get(socketId);
+    if (pending?.msgId === msgId) this._clearAck(socketId);
+  }
+
+  // Cancel pending retry for a socket (used on reconnect before syncPlayer).
+  clearPlayerAck(socketId) { this._clearAck(socketId); }
+
+  // Re-send the last player:phase to a reconnecting player.
+  syncPlayer(player) {
+    if (player._lastPhase) this.send(player.id, 'player:phase', player._lastPhase);
+  }
+
+  // Remap player-ID keyed state after a reconnect changes the socket ID.
+  // Subclasses override this when they keep Maps/Sets keyed by player ID.
+  updatePlayerId(oldId, newId) {}
+
+  // Stop all retry timers — call when the room is destroyed.
+  destroy() {
+    this.clearTimer();
+    for (const { retryTimer } of this._pendingAcks.values()) clearInterval(retryTimer);
+    this._pendingAcks.clear();
+  }
+
+  _clearAck(socketId) {
+    const p = this._pendingAcks.get(socketId);
+    if (p) { clearInterval(p.retryTimer); this._pendingAcks.delete(socketId); }
+  }
 
   startTimer(seconds, callback) {
     this.clearTimer();

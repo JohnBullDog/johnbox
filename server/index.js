@@ -51,9 +51,11 @@ io.on('connection', (socket) => {
 
   socket.on('room:create',  (data) => roomManager.createRoom(socket, data));
   socket.on('room:join',    (data) => roomManager.joinRoom(socket, data));
+  socket.on('room:rejoin',  (data) => roomManager.rejoinRoom(socket, data));
   socket.on('game:start',   (data) => roomManager.startGame(socket, data));
   socket.on('game:next',    ()     => roomManager.advanceGame(socket));
   socket.on('game:action',  (data) => roomManager.handleAction(socket, data));
+  socket.on('phase:ack',    (data) => roomManager.handlePhaseAck(socket, data));
   socket.on('disconnect',   ()     => roomManager.handleDisconnect(socket));
 });
 

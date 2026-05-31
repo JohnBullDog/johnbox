@@ -17,6 +17,10 @@
 
 const BaseGame = require('./BaseGame');
 
+function _transferMapKey(map, oldKey, newKey) {
+  if (map.has(oldKey)) { map.set(newKey, map.get(oldKey)); map.delete(oldKey); }
+}
+
 const PROMPTS = [
   'bicycle', 'elephant', 'pizza', 'rainbow', 'submarine',
   'volcano', 'superhero', 'spaceship', 'jellyfish', 'tornado',
@@ -324,6 +328,11 @@ class SketchMatch extends BaseGame {
         myRank: sorted.findIndex(s => s.id === p.id) + 1,
       });
     });
+  }
+
+  updatePlayerId(oldId, newId) {
+    _transferMapKey(this.guesses, oldId, newId);
+    _transferMapKey(this.votes, oldId, newId);
   }
 
   // ── Utilities ──────────────────────────────────────────────
