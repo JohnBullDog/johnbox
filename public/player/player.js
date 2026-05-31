@@ -115,7 +115,7 @@ socket.on('player:phase', (data) => {
   if (data._msgId != null) socket.emit('phase:ack', { msgId: data._msgId });
 
   // GSLS events are tagged game:'gsls' and handled by the GSLS listener below
-  if (data.game === 'gsls') return;
+  if (data.game === 'gsls' || data.game === 'overruled') return;
 
   // TagGame phases
   switch (data.phase) {
@@ -1374,4 +1374,371 @@ document.querySelectorAll('#s-gsls-aide .color-swatch').forEach(btn => {
     if (gslsAideColor === '#ffffff') gslsAideSize = 20;
     else gslsAideSize = 6;
   });
+});
+
+// ═══════════════════════════════════════════════════════════
+// OVERRULED! player handlers
+// ═══════════════════════════════════════════════════════════
+
+let orMyRole       = null;
+let orMyNet        = 0;
+let orProsColor    = '#1a1a1a';
+let orProsSize     = 6;
+let orProsDrawing  = false;
+let orProsLastX    = 0, orProsLastY = 0;
+
+// ── Phase routing ───────────────────────────────────────────
+
+socket.on('player:phase', (data) => {
+  if (data.game !== 'overruled') return;
+  switch (data.phase) {
+    case 'trial_setup':             orHandleSetup(data);          break;
+    case 'crime_reveal':            orHandleCrimeReveal(data);    break;
+    case 'evidence_create':         orHandleEvidenceCreate(data); break;
+    case 'evidence_present':        orHandleEvidencePresent(data);break;
+    case 'objection_rule_present':
+    case 'objection_rule_respond':  orHandleObjRule(data);        break;
+    case 'evidence_respond':        orHandleEvidenceRespond(data);break;
+    case 'closing_prosecution':
+    case 'closing_defence':         orHandleClosing(data);        break;
+    case 'verdict_vote':            orHandleVerdictVote(data);    break;
+    case 'verdict_reveal':          orHandleVerdictReveal(data);  break;
+    case 'game_over':               orHandleGameOver(data);       break;
+  }
+});
+
+// ── Handlers ────────────────────────────────────────────────
+
+function orHandleSetup(d) {
+  orMyRole = d.role;
+  orMyNet  = 0;
+  showScreen('s-or-setup');
+  const titles = { judge: '⚖️ You are the Judge', prosecutor: '⚔️ You are the Prosecutor',
+                   defendant: '🛡️ You are the Defendant', jury: '👥 You are Jury' };
+  document.getElementById('or-setup-role-title').textContent = titles[d.role] || 'Court is in Session';
+  const descs = {
+    judge:      `You will select the charge and rule on any objections.\nProsecutor: ${esc(d.prosecutorName)} — Defendant: ${esc(d.defendantName)}`,
+    prosecutor: `Fabricate evidence. Make it stick.\nDefendant: ${esc(d.defendantName)} — Judge: ${esc(d.judgeName)}`,
+    defendant:  `Every piece of evidence must be explained away.\nStart every response with "But…"\nProsecutor: ${esc(d.prosecutorName)}`,
+    jury:       `React live. Vote at the end.\nDefendant: ${esc(d.defendantName)}`,
+  };
+  document.getElementById('or-setup-role-card').textContent = descs[d.role] || '';
+  document.getElementById('or-setup-trial-label').textContent = `Trial ${d.trialNumber}/${d.totalTrials}`;
+}
+
+function orHandleCrimeReveal(d) {
+  if (d.role === 'judge') {
+    showScreen('s-or-crime-judge');
+    document.getElementById('or-crime-options').innerHTML = (d.crimeOptions || []).map(c =>
+      `<button class="btn btn-primary" style="padding:14px;font-size:14px;font-weight:700;text-align:left;line-height:1.4;white-space:normal;"
+        onclick="orSelectCrime('${c.id}')">${esc(c.text)}</button>`
+    ).join('');
+  } else {
+    showScreen('s-or-crime-wait');
+    document.getElementById('or-crime-wait-label').textContent = `${d.judgeName} is selecting the charge…`;
+  }
+}
+
+function orSelectCrime(crimeId) {
+  document.querySelectorAll('#or-crime-options button').forEach(b => b.disabled = true);
+  socket.emit('game:action', { type: 'crime_selected', crimeId });
+}
+
+function orHandleEvidenceCreate(d) {
+  orMyRole = d.role;
+  if (d.role === 'prosecutor') {
+    if (d.evidenceType.input === 'draw') {
+      showScreen('s-or-ev-create-draw');
+      document.getElementById('or-ev-create-draw-crime').textContent = d.crime?.text ?? '';
+      document.getElementById('or-ev-draw-timer').textContent = d.timeLeft;
+      orInitProsCanvas();
+    } else {
+      showScreen('s-or-ev-create-text');
+      document.getElementById('or-ev-create-type-label').textContent = d.evidenceType.label;
+      document.getElementById('or-ev-create-crime-box').textContent  = d.crime?.text ?? '';
+      document.getElementById('or-ev-text-input').value = '';
+      document.getElementById('or-ev-create-timer').textContent = d.timeLeft;
+    }
+  } else {
+    showScreen('s-or-ev-create-wait');
+    document.getElementById('or-ev-create-wait-label').textContent = `Prosecution is fabricating evidence…`;
+    document.getElementById('or-ev-create-wait-round').textContent  = d.evidenceRound;
+    document.getElementById('or-ev-create-wait-timer').textContent  = d.timeLeft;
+  }
+}
+
+function orSubmitTextEvidence() {
+  const text = document.getElementById('or-ev-text-input').value.trim();
+  if (!text) return;
+  document.querySelectorAll('#s-or-ev-create-text button').forEach(b => b.disabled = true);
+  socket.emit('game:action', { type: 'evidence_submitted', text });
+  showWaiting('⚔️', 'Evidence submitted!', 'Court will now hear the evidence.');
+}
+
+function orSubmitDrawEvidence() {
+  const canvas = document.getElementById('or-prosecutor-canvas');
+  const imageData = canvas?.toDataURL('image/png');
+  document.querySelectorAll('#s-or-ev-create-draw button').forEach(b => b.disabled = true);
+  socket.emit('game:action', { type: 'evidence_submitted', imageData });
+  showWaiting('🎨', 'Exhibit A submitted!', 'Court will now view the exhibit.');
+}
+
+function orEvidenceCardHtml(ev) {
+  if (!ev) return '';
+  if (ev.type === 'drawing') {
+    return `<div style="border-radius:8px;overflow:hidden;border:2px solid #e9c46a;">
+      <div style="background:#e9c46a;color:#000;font-weight:800;padding:5px 10px;font-size:12px;">🎨 EXHIBIT A</div>
+      ${ev.imageData ? `<img src="${ev.imageData}" style="width:100%;display:block;" />` : ''}
+    </div>`;
+  }
+  const icons = { text_message:'📱', witness:'👁️', document:'📄', cctv:'📹' };
+  return `<div style="background:var(--card);border-left:3px solid #e9c46a;padding:12px;border-radius:8px;font-size:14px;white-space:pre-wrap;">
+    <div style="font-size:11px;color:#e9c46a;font-weight:700;margin-bottom:4px;">${icons[ev.type]||'📋'} ${(ev.label||'').toUpperCase()}</div>
+    ${esc(ev.text||'')}
+  </div>`;
+}
+
+function orHandleEvidencePresent(d) {
+  orMyRole = d.role;
+  showScreen('s-or-ev-present');
+  document.getElementById('or-ev-present-role-label').textContent = `Evidence ${d.evidenceRound}/3`;
+  document.getElementById('or-ev-present-content').innerHTML = orEvidenceCardHtml(d.evidence);
+  document.getElementById('or-ev-present-timer').textContent  = d.timeLeft;
+  const action = document.getElementById('or-ev-present-action');
+  if (d.role === 'prosecutor') {
+    action.innerHTML = `<button class="btn btn-primary" style="padding:14px;font-size:15px;" onclick="orSpeakerDone()">✅ Done Presenting</button>`;
+  } else if (d.role === 'defendant') {
+    action.innerHTML = `<button class="btn" style="padding:14px;font-size:15px;background:#3a1a1a;border:2px solid var(--coral);color:var(--coral);font-weight:900;" onclick="orObjection()">⚠️ OBJECTION!</button>`;
+  } else if (d.role === 'jury') {
+    action.innerHTML = orCheerBooHtml();
+  } else {
+    action.innerHTML = '';
+  }
+}
+
+function orHandleEvidenceRespond(d) {
+  orMyRole = d.role;
+  showScreen('s-or-ev-respond');
+  document.getElementById('or-ev-respond-role-label').textContent = `Evidence ${d.evidenceRound}/3 — Defence`;
+  document.getElementById('or-ev-respond-content').innerHTML = d.role === 'defendant'
+    ? `<div style="font-size:28px;font-weight:900;color:#e9c46a;text-align:center;letter-spacing:2px;padding:6px;">BUT…</div>` + orEvidenceCardHtml(d.evidence)
+    : orEvidenceCardHtml(d.evidence);
+  document.getElementById('or-ev-respond-timer').textContent = d.timeLeft;
+  const action = document.getElementById('or-ev-respond-action');
+  if (d.role === 'defendant') {
+    action.innerHTML = `<button class="btn btn-primary" style="padding:14px;font-size:15px;" onclick="orSpeakerDone()">✅ Done Responding</button>`;
+  } else if (d.role === 'prosecutor') {
+    action.innerHTML = `<button class="btn" style="padding:14px;font-size:15px;background:#3a1a1a;border:2px solid var(--coral);color:var(--coral);font-weight:900;" onclick="orObjection()">⚠️ OBJECTION!</button>`;
+  } else if (d.role === 'jury') {
+    action.innerHTML = orCheerBooHtml();
+  } else {
+    action.innerHTML = '';
+  }
+}
+
+function orHandleObjRule(d) {
+  showScreen('s-or-obj-rule');
+  document.getElementById('or-obj-rule-timer').textContent = d.timeLeft;
+  document.getElementById('or-obj-rule-filer').textContent = `${d.filerName} objected to ${d.objection?.phase === 'present' ? 'the evidence' : 'the response'}`;
+  const isJudge = d.role === 'judge';
+  if (isJudge) {
+    const g = document.getElementById('or-obj-rule-guidelines');
+    g.innerHTML = `<strong style="color:var(--teal);">SUSTAIN if:</strong><br>${(d.sustainGuidelines||[]).map(s=>`• ${esc(s)}`).join('<br>')}<br><br><strong style="color:var(--coral);">OVERRULE if:</strong><br>${(d.overruleGuidelines||[]).map(s=>`• ${esc(s)}`).join('<br>')}`;
+    document.getElementById('or-obj-rule-btns').style.display = 'flex';
+    document.getElementById('or-obj-rule-wait-text').style.display = 'none';
+  } else {
+    document.getElementById('or-obj-rule-guidelines').innerHTML = '';
+    document.getElementById('or-obj-rule-btns').style.display = 'none';
+    document.getElementById('or-obj-rule-wait-text').style.display = 'block';
+  }
+  document.getElementById('or-obj-rule-result').style.display = 'none';
+}
+
+function orRuleObjection(ruling) {
+  document.querySelectorAll('#or-obj-rule-btns button').forEach(b => b.disabled = true);
+  socket.emit('game:action', { type: 'objection_ruling', ruling });
+}
+
+function orHandleClosing(d) {
+  showScreen('s-or-closing');
+  const isProsCLosing = d.phase === 'closing_prosecution';
+  document.getElementById('or-closing-title').textContent = isProsCLosing ? '🔥 Closing — Prosecution' : '🛡️ Closing — Defence';
+  const speakerName = isProsCLosing ? d.prosecutorName : d.defendantName;
+  document.getElementById('or-closing-speaker-label').textContent = `${speakerName} is making their closing argument`;
+  document.getElementById('or-closing-timer').textContent = d.timeLeft;
+  const isMySpeech = (isProsCLosing && d.role === 'prosecutor') || (!isProsCLosing && d.role === 'defendant');
+  const action = document.getElementById('or-closing-action');
+  if (isMySpeech) {
+    action.innerHTML = `<button class="btn btn-primary" style="width:100%;padding:16px;font-size:16px;" onclick="orSpeakerDone()">✅ Done</button>`;
+  } else if (d.role === 'jury') {
+    action.innerHTML = orCheerBooHtml();
+  } else {
+    action.innerHTML = '';
+  }
+}
+
+function orHandleVerdictVote(d) {
+  if (d.role === 'jury') {
+    showScreen('s-or-verdict-vote');
+    document.getElementById('or-verdict-defendant-label').textContent = `Is ${d.defendantName} guilty?`;
+  } else {
+    showScreen('s-or-verdict-wait');
+  }
+}
+
+function orCastVerdict(vote) {
+  document.querySelectorAll('#s-or-verdict-vote button').forEach(b => b.disabled = true);
+  socket.emit('game:action', { type: 'verdict_vote', vote });
+  showScreen('s-or-verdict-voted');
+  document.getElementById('or-voted-msg').textContent = vote === 'guilty' ? 'Voted: GUILTY' : 'Voted: NOT GUILTY';
+}
+
+function orHandleVerdictReveal(d) {
+  showScreen('s-or-verdict-reveal');
+  const banner = document.getElementById('or-reveal-banner');
+  if (d.isGuilty) {
+    banner.textContent = '⚖️ GUILTY';
+    banner.style.background = '#3a1a1a';
+    banner.style.color = 'var(--coral)';
+  } else {
+    banner.textContent = '🎉 NOT GUILTY';
+    banner.style.background = '#1a3a2a';
+    banner.style.color = 'var(--teal)';
+  }
+  document.getElementById('or-reveal-crime').textContent = d.crime?.text ?? '';
+  const delta = d.scoreDelta ?? 0;
+  document.getElementById('or-reveal-score-delta').textContent = delta > 0 ? `+${delta} pts` : '';
+  const myPlayer2 = d.players?.find(p => myPlayer && p.id === myPlayer.id);
+  document.getElementById('or-reveal-total').textContent = myPlayer2 ? `Total: ${myPlayer2.score} pts` : '';
+}
+
+function orHandleGameOver(d) {
+  localStorage.removeItem(SESSION_KEY);
+  handleGameOver(d);  // reuse SketchMatch game-over screen
+}
+
+// ── Actions ─────────────────────────────────────────────────
+
+function orSpeakerDone() {
+  document.querySelectorAll('#s-or-ev-present button, #s-or-ev-respond button, #s-or-closing button')
+    .forEach(b => { if (!b.classList.contains('color-swatch')) b.disabled = true; });
+  socket.emit('game:action', { type: 'speaker_done' });
+}
+
+function orObjection() {
+  document.querySelectorAll('#s-or-ev-present .btn, #s-or-ev-respond .btn').forEach(b => b.disabled = true);
+  socket.emit('game:action', { type: 'objection' });
+  showWaiting('⚠️', 'OBJECTION!', 'Waiting for the judge to rule…');
+}
+
+function orCheerBooHtml() {
+  return `<div style="display:flex;gap:16px;justify-content:center;margin-top:4px;">
+    <button style="font-size:44px;background:none;border:none;cursor:pointer;" onclick="orReact('cheer')">👏</button>
+    <button style="font-size:44px;background:none;border:none;cursor:pointer;" onclick="orReact('boo')">👎</button>
+  </div>
+  <div style="font-size:12px;color:var(--muted);text-align:center;" id="or-jury-net">Your reaction: 0</div>`;
+}
+
+function orReact(type) {
+  socket.emit('game:action', { type });
+  orMyNet += type === 'cheer' ? 1 : -1;
+  const capped = Math.max(-5, Math.min(5, orMyNet));
+  const el = document.getElementById('or-jury-net');
+  if (el) el.textContent = `Your reaction: ${capped >= 0 ? '+' : ''}${capped} / ±5`;
+}
+
+// ── Prosecutor drawing ───────────────────────────────────────
+
+function orInitProsCanvas() {
+  const canvas = document.getElementById('or-prosecutor-canvas');
+  if (!canvas) return;
+  const w = canvas.offsetWidth || 340;
+  canvas.width  = w;
+  canvas.height = Math.round(w * 0.65);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'white'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  canvas.removeEventListener('pointerdown', orProsDown);
+  canvas.removeEventListener('pointermove', orProsMove);
+  canvas.removeEventListener('pointerup',   orProsUp);
+  canvas.removeEventListener('pointerleave',orProsUp);
+  canvas.addEventListener('pointerdown', orProsDown, { passive: false });
+  canvas.addEventListener('pointermove', orProsMove, { passive: false });
+  canvas.addEventListener('pointerup',   orProsUp,   { passive: false });
+  canvas.addEventListener('pointerleave',orProsUp,   { passive: false });
+}
+
+function orProsPos(e) {
+  const c = document.getElementById('or-prosecutor-canvas');
+  const r = c.getBoundingClientRect();
+  return { x: (e.clientX-r.left)/r.width, y: (e.clientY-r.top)/r.height };
+}
+
+function orProsDrawLocal(ev) {
+  const c = document.getElementById('or-prosecutor-canvas');
+  if (!c) return;
+  const ctx = c.getContext('2d'), w = c.width, h = c.height;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (ev.type==='line') {
+    ctx.beginPath(); ctx.moveTo(ev.x0*w,ev.y0*h); ctx.lineTo(ev.x1*w,ev.y1*h);
+    ctx.strokeStyle=ev.color; ctx.lineWidth=ev.size; ctx.stroke();
+  } else if (ev.type==='dot') {
+    ctx.beginPath(); ctx.arc(ev.x*w,ev.y*h,ev.size/2,0,Math.PI*2);
+    ctx.fillStyle=ev.color; ctx.fill();
+  } else if (ev.type==='clear') {
+    ctx.fillStyle='white'; ctx.fillRect(0,0,w,h);
+  }
+}
+
+function orProsDown(e) {
+  e.preventDefault();
+  document.getElementById('or-prosecutor-canvas').setPointerCapture(e.pointerId);
+  orProsDrawing = true;
+  const p = orProsPos(e);
+  orProsLastX=p.x; orProsLastY=p.y;
+  const ev = { type:'dot', x:p.x, y:p.y, color:orProsColor, size:orProsSize };
+  orProsDrawLocal(ev);
+  socket.emit('game:action', { type:'evidence_draw', event:ev });
+}
+function orProsMove(e) {
+  e.preventDefault();
+  if (!orProsDrawing) return;
+  const p = orProsPos(e);
+  const ev = { type:'line', x0:orProsLastX, y0:orProsLastY, x1:p.x, y1:p.y, color:orProsColor, size:orProsSize };
+  orProsDrawLocal(ev);
+  socket.emit('game:action', { type:'evidence_draw', event:ev });
+  orProsLastX=p.x; orProsLastY=p.y;
+}
+function orProsUp(e) { e.preventDefault(); orProsDrawing=false; }
+
+document.getElementById('or-draw-clear')?.addEventListener('click', () => {
+  orProsDrawLocal({ type:'clear' });
+  socket.emit('game:action', { type:'evidence_draw', event:{ type:'clear' } });
+});
+
+document.querySelectorAll('#s-or-ev-create-draw .color-swatch').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#s-or-ev-create-draw .color-swatch').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    orProsColor = btn.dataset.color;
+    orProsSize  = orProsColor === '#ffffff' ? 20 : 6;
+  });
+});
+
+// ── Live event reactions ─────────────────────────────────────
+
+socket.on('overruled:objection_filed', ({ filerName }) => {
+  showWaiting('⚠️', `OBJECTION! — ${filerName}`, 'Judge is ruling…');
+});
+
+socket.on('overruled:ruling', ({ ruling }) => {
+  // Handled by showing new phase; brief indicator if still on waiting screen
+});
+
+socket.on('timer', ({ timeLeft }) => {
+  ['or-ev-create-timer','or-ev-draw-timer','or-ev-create-wait-timer',
+   'or-ev-present-timer','or-ev-respond-timer','or-obj-rule-timer','or-closing-timer']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el && el.closest('.screen')?.classList.contains('active')) el.textContent = timeLeft;
+    });
 });

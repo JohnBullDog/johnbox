@@ -160,7 +160,7 @@ socket.on('lobby:update', ({ players }) => {
 // ── Game phases ────────────────────────────────────────────
 
 socket.on('host:phase', (data) => {
-  if (data.game === 'gsls') return;  // handled by GSLS listener below
+  if (data.game === 'gsls' || data.game === 'overruled') return;  // handled by GSLS listener below
   currentPhase = data.phase;
   showScreen('s-game');
 
@@ -513,7 +513,7 @@ function tgCopyWheel(fromId, toId) {
 // ── Phase handlers ─────────────────────────────────────────
 
 socket.on('host:phase', (data) => {
-  if (data.game === 'gsls') return;
+  if (data.game === 'gsls' || data.game === 'overruled') return;
   // TagGame phases
   switch (data.phase) {
     case 'spin_ready':    tgHandleSpinReady(data);    return;
@@ -1141,4 +1141,300 @@ socket.on('gsls:reaction_update', ({ reactions }) => {
     const el = document.getElementById(id);
     if (el) { el.textContent = str; el.style.color = total >= 0 ? 'var(--teal)' : 'var(--coral)'; }
   });
+});
+
+// ═══════════════════════════════════════════════════════════
+// OVERRULED! host handlers
+// ═══════════════════════════════════════════════════════════
+
+let orDrawCtx = null;
+
+function orShowPanel(id) {
+  document.querySelectorAll('.or-panel').forEach(p => p.style.display = 'none');
+  const el = document.getElementById(id);
+  if (el) el.style.display = 'flex';
+}
+
+function orSetTimer(t, max) {
+  document.getElementById('or-timer-num').textContent = t;
+  const c = document.getElementById('or-timer-circle');
+  if (c) c.style.strokeDashoffset = 94 * (1 - (max > 0 ? t / max : 0));
+}
+
+function orRoleBadge(elId, name, color) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.textContent = name;
+  el.style.borderLeft = `3px solid ${color}`;
+  el.style.background = color + '22';
+}
+
+function orEvidenceHtml(ev) {
+  if (!ev) return '';
+  const styles = {
+    text_message: { bg: '#0d1b2a', border: '#4ecdc4', icon: '📱', title: 'Text Message' },
+    witness:      { bg: '#1a1a2a', border: '#96ceb4', icon: '👁️', title: 'Witness Testimony' },
+    document:     { bg: '#1a1a0d', border: '#e9c46a', icon: '📄', title: 'Official Document' },
+    cctv:         { bg: '#0d0d0d', border: '#aaaaaa', icon: '📹', title: 'CCTV Footage' },
+  };
+  const s = styles[ev.type] || { bg: '#1a1a2a', border: '#e9c46a', icon: '📋', title: ev.label || 'Evidence' };
+  if (ev.type === 'drawing') {
+    return `<div class="or-evidence-box" style="background:#fff;border:3px solid #e9c46a;padding:0;overflow:hidden;">
+      <div style="background:#e9c46a;color:#000;font-weight:800;padding:6px 12px;font-size:13px;">🎨 Exhibit A</div>
+      ${ev.imageData ? `<img src="${ev.imageData}" style="width:100%;display:block;max-height:280px;object-fit:contain;" />` : '<div style="height:200px;display:flex;align-items:center;justify-content:center;color:#999;font-size:14px;">[Drawing in progress]</div>'}
+    </div>`;
+  }
+  return `<div class="or-evidence-box" style="background:${s.bg};border-left:4px solid ${s.border};">
+    <div style="font-size:11px;font-weight:700;color:${s.border};margin-bottom:6px;">${s.icon} ${s.title.toUpperCase()}</div>
+    <div style="white-space:pre-wrap;font-size:15px;">${esc(ev.text || '')}</div>
+  </div>`;
+}
+
+function orScoreboard(players) {
+  const el = document.getElementById('or-scoreboard');
+  if (!el || !players) return;
+  el.innerHTML = [...players].sort((a, b) => b.score - a.score).map(p =>
+    `<div style="display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid #2a2a3a;">
+      <div style="width:8px;height:8px;border-radius:50%;background:${p.color};flex-shrink:0;"></div>
+      <div style="flex:1;font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.name)}</div>
+      <div style="font-size:12px;font-weight:900;color:#e9c46a;">${p.score}</div>
+    </div>`
+  ).join('');
+}
+
+function orRolesSidebar(judgeN, prosN, defN, juryN) {
+  document.getElementById('or-roles-sidebar').innerHTML =
+    `<div style="color:var(--muted)">⚖️ <strong>${esc(judgeN)}</strong></div>
+     <div style="color:var(--coral)">⚔️ <strong>${esc(prosN)}</strong></div>
+     <div style="color:var(--teal)">🛡️ <strong>${esc(defN)}</strong></div>
+     <div style="color:var(--muted)">${esc(juryN)}</div>`;
+}
+
+socket.on('host:phase', (data) => {
+  if (data.game !== 'overruled') return;
+  showScreen('s-overruled');
+  document.getElementById('or-hdr-trial').textContent =
+    `Trial ${data.trialNumber || '?'}/${data.totalTrials || '?'}`;
+
+  switch (data.phase) {
+
+    case 'trial_setup':
+      orShowPanel('or-p-setup');
+      document.getElementById('or-hdr-phase').textContent = '⚖️ Court is in Session';
+      orSetTimer(4, 4);
+      document.getElementById('or-setup-judge-name').textContent  = data.judge?.name  ?? '—';
+      document.getElementById('or-setup-judge-name').style.color  = data.judge?.color ?? '';
+      document.getElementById('or-setup-pros-name').textContent   = data.prosecutor?.name  ?? '—';
+      document.getElementById('or-setup-pros-name').style.color   = data.prosecutor?.color ?? '';
+      document.getElementById('or-setup-def-name').textContent    = data.defendant?.name   ?? '—';
+      document.getElementById('or-setup-def-name').style.color    = data.defendant?.color  ?? '';
+      document.getElementById('or-setup-jury-names').textContent  = (data.jury || []).map(p => p.name).join(', ') || '—';
+      orRolesSidebar(data.judge?.name, data.prosecutor?.name, data.defendant?.name,
+        (data.jury||[]).map(p=>p.name).join(', ') || 'none');
+      break;
+
+    case 'crime_reveal':
+      orShowPanel('or-p-crime');
+      document.getElementById('or-hdr-phase').textContent = '📋 The Charge';
+      orSetTimer(data.timeLeft || 20, 20);
+      document.getElementById('or-crime-judge-label').textContent = `${data.judgeName} is selecting the charge…`;
+      document.getElementById('or-crime-display').style.display = 'none';
+      document.getElementById('or-crime-waiting').style.display = 'block';
+      break;
+
+    case 'evidence_create': {
+      orShowPanel('or-p-ev-create');
+      document.getElementById('or-hdr-phase').textContent = `Evidence ${data.evidenceRound}/3 — Creating`;
+      orSetTimer(data.timeLeft || 60, data.evidenceType?.input === 'draw' ? 90 : 60);
+      document.getElementById('or-ev-round-create').textContent = data.evidenceRound;
+      document.getElementById('or-ev-type-label').textContent   = data.evidenceType?.label ?? '';
+      document.getElementById('or-ev-create-crime').textContent = data.crime?.text ?? '';
+      orRoleBadge('or-ev-create-pros-badge', data.prosecutorName, '#ff6b6b');
+      const canvas = document.getElementById('or-draw-canvas');
+      if (data.evidenceType?.input === 'draw') {
+        canvas.style.display = 'block';
+        canvas.width  = canvas.offsetWidth  || 420;
+        canvas.height = 280;
+        const ctx2 = canvas.getContext('2d');
+        ctx2.fillStyle = 'white'; ctx2.fillRect(0, 0, canvas.width, canvas.height);
+        orDrawCtx = ctx2;
+      } else {
+        canvas.style.display = 'none';
+        orDrawCtx = null;
+      }
+      break;
+    }
+
+    case 'evidence_present':
+      orShowPanel('or-p-ev-present');
+      document.getElementById('or-hdr-phase').textContent = `Evidence ${data.evidenceRound}/3 — Prosecution`;
+      orSetTimer(data.timeLeft || 40, 40);
+      document.getElementById('or-ev-round-present').textContent = data.evidenceRound;
+      document.getElementById('or-evidence-display').innerHTML   = orEvidenceHtml(data.evidence);
+      document.getElementById('or-objection-banner').style.display = 'none';
+      document.getElementById('or-reaction-present').textContent = '—';
+      break;
+
+    case 'objection_rule_present':
+    case 'objection_rule_respond':
+      orShowPanel('or-p-obj-rule');
+      document.getElementById('or-hdr-phase').textContent = '⚠️ OBJECTION!';
+      orSetTimer(data.timeLeft || 25, 25);
+      document.getElementById('or-obj-filer').textContent =
+        `${data.filerName} objects! ${data.objection?.phase === 'present' ? '(to the evidence)' : '(to the response)'}`;
+      document.getElementById('or-obj-sustain-list').innerHTML =
+        (data.sustainGuidelines || []).map(g => `• ${esc(g)}`).join('<br>');
+      document.getElementById('or-obj-overrule-list').innerHTML =
+        (data.overruleGuidelines || []).map(g => `• ${esc(g)}`).join('<br>');
+      document.getElementById('or-obj-judge-label').textContent = `${data.judgeName} is ruling…`;
+      document.getElementById('or-obj-result').style.display = 'none';
+      break;
+
+    case 'evidence_respond':
+      orShowPanel('or-p-ev-respond');
+      document.getElementById('or-hdr-phase').textContent = `Evidence ${data.evidenceRound}/3 — Defence`;
+      orSetTimer(data.timeLeft || 40, 40);
+      document.getElementById('or-ev-round-respond').textContent  = data.evidenceRound;
+      document.getElementById('or-respond-evidence').innerHTML     = orEvidenceHtml(data.evidence);
+      document.getElementById('or-respond-objection-banner').style.display = 'none';
+      document.getElementById('or-reaction-respond').textContent  = '—';
+      break;
+
+    case 'closing_prosecution':
+      orShowPanel('or-p-closing-pros');
+      document.getElementById('or-hdr-phase').textContent = '🔥 Closing — Prosecution';
+      orSetTimer(data.timeLeft || 45, 45);
+      orRoleBadge('or-closing-pros-badge', data.prosecutorName, '#ff6b6b');
+      document.getElementById('or-closing-crime-pros').textContent = data.crime?.text ?? '';
+      document.getElementById('or-reaction-closing-pros').textContent = '—';
+      break;
+
+    case 'closing_defence':
+      orShowPanel('or-p-closing-def');
+      document.getElementById('or-hdr-phase').textContent = '🛡️ Closing — Defence';
+      orSetTimer(data.timeLeft || 45, 45);
+      orRoleBadge('or-closing-def-badge', data.defendantName, '#4ecdc4');
+      document.getElementById('or-closing-crime-def').textContent = data.crime?.text ?? '';
+      document.getElementById('or-reaction-closing-def').textContent = '—';
+      break;
+
+    case 'verdict_vote':
+      orShowPanel('or-p-verdict-vote');
+      document.getElementById('or-hdr-phase').textContent = '🗳️ Jury Deliberates';
+      orSetTimer(data.timeLeft || 25, 25);
+      document.getElementById('or-verdict-crime').textContent = data.crime?.text ?? '';
+      document.getElementById('or-vote-count').textContent = `0/${data.total || 0}`;
+      break;
+
+    case 'verdict_reveal': {
+      orShowPanel('or-p-verdict-reveal');
+      document.getElementById('or-hdr-phase').textContent = '⚖️ Verdict!';
+      orSetTimer(10, 10);
+      const banner = document.getElementById('or-verdict-banner');
+      if (data.isGuilty) {
+        banner.textContent = `⚖️ GUILTY`;
+        banner.style.background = '#3a1a1a';
+        banner.style.color = 'var(--coral)';
+      } else {
+        banner.textContent = `🎉 NOT GUILTY`;
+        banner.style.background = '#1a3a2a';
+        banner.style.color = 'var(--teal)';
+      }
+      document.getElementById('or-guilty-count').textContent    = data.guiltyVotes;
+      document.getElementById('or-notguilty-count').textContent = data.notGuiltyVotes;
+      const scEl = document.getElementById('or-verdict-scores');
+      scEl.innerHTML = `
+        <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:13px;">
+          <div style="background:var(--surface);padding:8px 14px;border-radius:8px;">
+            ⚔️ <strong>${esc(data.prosecutorName)}</strong>
+            ${data.isGuilty ? ' <span style="color:var(--teal);">+200</span>' : ''}
+          </div>
+          <div style="background:var(--surface);padding:8px 14px;border-radius:8px;">
+            🛡️ <strong>${esc(data.defendantName)}</strong>
+            ${!data.isGuilty ? ' <span style="color:var(--teal);">+200</span>' : ''}
+          </div>
+        </div>`;
+      orScoreboard(data.players);
+      break;
+    }
+
+    case 'game_over': {
+      orShowPanel('or-p-gameover');
+      document.getElementById('or-hdr-phase').textContent = 'Court Adjourned';
+      const medals = ['🥇','🥈','🥉'], heights = [200,160,120];
+      const top3 = data.players.slice(0,3);
+      const order = top3.length >= 3 ? [1,0,2] : [0,1,2];
+      document.getElementById('or-podium').innerHTML = order.filter(i=>top3[i]).map(i=>{
+        const p=top3[i];
+        return `<div class="podium-slot"><div class="podium-name">${esc(p.name)}</div><div class="podium-score">${p.score} pts</div><div class="podium-block" style="height:${heights[i]}px;background:${p.color};color:#000;">${medals[i]}</div></div>`;
+      }).join('');
+      document.getElementById('or-final-list').innerHTML = data.players.map(p=>
+        `<div class="final-row"><div class="final-rank">${p.rank}</div><div class="player-dot" style="background:${p.color}"></div><div class="final-name">${esc(p.name)}</div><div class="final-score">${p.score}</div></div>`
+      ).join('');
+      break;
+    }
+  }
+});
+
+// ── Overruled live events ───────────────────────────────────
+
+socket.on('overruled:crime_confirmed', ({ crime }) => {
+  document.getElementById('or-crime-waiting').style.display = 'none';
+  const d = document.getElementById('or-crime-display');
+  d.textContent = crime.text;
+  d.style.display = 'block';
+});
+
+socket.on('overruled:draw', ({ event }) => {
+  if (!orDrawCtx) return;
+  const c = orDrawCtx.canvas;
+  const w = c.width, h = c.height;
+  orDrawCtx.lineCap = 'round'; orDrawCtx.lineJoin = 'round';
+  if (event.type === 'line') {
+    orDrawCtx.beginPath(); orDrawCtx.moveTo(event.x0*w, event.y0*h);
+    orDrawCtx.lineTo(event.x1*w, event.y1*h);
+    orDrawCtx.strokeStyle = event.color; orDrawCtx.lineWidth = event.size; orDrawCtx.stroke();
+  } else if (event.type === 'dot') {
+    orDrawCtx.beginPath(); orDrawCtx.arc(event.x*w, event.y*h, event.size/2, 0, Math.PI*2);
+    orDrawCtx.fillStyle = event.color; orDrawCtx.fill();
+  } else if (event.type === 'clear') {
+    orDrawCtx.fillStyle = 'white'; orDrawCtx.fillRect(0,0,w,h);
+  }
+});
+
+socket.on('overruled:objection_filed', ({ filerName, filerRole, phase }) => {
+  const bannerId = phase === 'present' ? 'or-objection-banner' : 'or-respond-objection-banner';
+  const el = document.getElementById(bannerId);
+  if (el) { el.textContent = `⚠️ OBJECTION! — ${filerName}`; el.style.display = 'block'; }
+});
+
+socket.on('overruled:ruling', ({ ruling }) => {
+  const el = document.getElementById('or-obj-result');
+  el.style.display = 'block';
+  el.textContent = ruling === 'sustained' ? '✅ SUSTAINED' : '❌ OVERRULED';
+  el.style.background = ruling === 'sustained' ? '#1a3a2a' : '#3a1a1a';
+  el.style.color = ruling === 'sustained' ? 'var(--teal)' : 'var(--coral)';
+});
+
+socket.on('overruled:reaction_update', ({ net }) => {
+  const s = `${net >= 0 ? '+' : ''}${net}`;
+  const c = net >= 0 ? 'var(--teal)' : 'var(--coral)';
+  ['or-reaction-present','or-reaction-respond','or-reaction-closing-pros','or-reaction-closing-def'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = s; el.style.color = c; }
+  });
+});
+
+socket.on('overruled:vote_count', ({ voted, total }) => {
+  const el = document.getElementById('or-vote-count');
+  if (el) el.textContent = `${voted}/${total}`;
+});
+
+socket.on('timer', ({ timeLeft }) => {
+  if (!document.getElementById('s-overruled')?.classList.contains('active')) return;
+  const n = document.getElementById('or-timer-num');
+  if (n) {
+    const max = parseInt(n.dataset.max || timeLeft) || timeLeft;
+    orSetTimer(timeLeft, max);
+  }
 });
