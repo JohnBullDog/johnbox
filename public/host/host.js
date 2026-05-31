@@ -339,3 +339,389 @@ socket.on('room:closed', ({ message }) => {
   alert(message);
   location.reload();
 });
+
+// ═══════════════════════════════════════════════════════════
+// TAG GAME — host handlers
+// ═══════════════════════════════════════════════════════════
+
+let tgWheelSegments   = null;
+let tgWheelRotation   = 0;   // current resting rotation in degrees
+let tgWheelAnimFrame  = null;
+
+// ── Wheel drawing ──────────────────────────────────────────
+
+function tgDrawWheel(canvas, segments, rotationDeg) {
+  if (!canvas || !segments) return;
+  const ctx = canvas.getContext('2d');
+  const cx  = canvas.width  / 2;
+  const cy  = canvas.height / 2;
+  const r   = Math.min(cx, cy) - 6;
+  const n   = segments.length;
+  const arc = (2 * Math.PI) / n;
+  const off = (rotationDeg * Math.PI / 180) - Math.PI / 2;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const adjPalette = ['#1e3a5f','#243d6e','#2a4575','#1a3560','#1d3d6a','#20406d','#22427a','#193358'];
+
+  segments.forEach((seg, i) => {
+    const a0 = off + i * arc;
+    const a1 = a0 + arc;
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, a0, a1);
+    ctx.closePath();
+    ctx.fillStyle = seg.type === 'event' ? '#6b3dcc' : adjPalette[i % adjPalette.length];
+    ctx.fill();
+    ctx.strokeStyle = '#0f0f1a';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Label
+    const mid  = a0 + arc / 2;
+    const tr   = r * 0.68;
+    ctx.save();
+    ctx.translate(cx + Math.cos(mid) * tr, cy + Math.sin(mid) * tr);
+    ctx.rotate(mid + Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'white';
+    ctx.font = `bold 10px sans-serif`;
+    const label = seg.type === 'event' ? (seg.icon + ' ' + seg.name) : seg.value;
+    const maxC  = Math.max(10, Math.floor(r / 20));
+    ctx.fillText(label.length > maxC ? label.slice(0, maxC - 1) + '…' : label, 0, 0);
+    ctx.restore();
+  });
+
+  // Outer ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+  ctx.strokeStyle = '#7c4dff';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  // Centre hub
+  ctx.beginPath();
+  ctx.arc(cx, cy, 16, 0, 2 * Math.PI);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fill();
+  ctx.strokeStyle = '#7c4dff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function tgAnimateSpin(canvas, segments, fromDeg, resultIndex, onDone) {
+  if (tgWheelAnimFrame) cancelAnimationFrame(tgWheelAnimFrame);
+  const n          = segments.length;
+  const segDeg     = 360 / n;
+  const segCenter  = resultIndex * segDeg + segDeg / 2;
+  const adjustment = (360 - segCenter + 360) % 360;
+  const targetDeg  = fromDeg + 5 * 360 + adjustment;
+  const duration   = 4500;
+  const start      = performance.now();
+
+  function frame(now) {
+    const t     = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - t, 5);
+    const deg   = fromDeg + (targetDeg - fromDeg) * eased;
+    tgDrawWheel(canvas, segments, deg);
+    if (t < 1) {
+      tgWheelAnimFrame = requestAnimationFrame(frame);
+    } else {
+      tgWheelRotation = targetDeg % 360;
+      if (onDone) onDone();
+    }
+  }
+  tgWheelAnimFrame = requestAnimationFrame(frame);
+}
+
+// Copy wheel drawing to another canvas element (for persistent display)
+function tgCopyWheel(fromId, toId) {
+  const src = document.getElementById(fromId);
+  const dst = document.getElementById(toId);
+  if (!src || !dst) return;
+  const ctx = dst.getContext('2d');
+  ctx.clearRect(0, 0, dst.width, dst.height);
+  ctx.drawImage(src, 0, 0, dst.width, dst.height);
+}
+
+// ── Phase handlers ─────────────────────────────────────────
+
+socket.on('host:phase', (data) => {
+  // TagGame phases
+  switch (data.phase) {
+    case 'spin_ready':    tgHandleSpinReady(data);    return;
+    case 'spinning':      tgHandleSpinning(data);     return;
+    case 'adj_result':    tgHandleAdjResult(data);    return;
+    case 'event_result':  tgHandleEventResult(data);  return;
+    case 'event_resolve': tgHandleEventResolve(data); return;
+    case 'event_applied': tgHandleEventApplied(data); return;
+    case 'task_intro':    tgHandleTaskIntro(data);    return;
+    case 'skit':          tgHandleSkit(data);         return;
+    case 'skit_result':   tgHandleSkitResult(data);   return;
+    case 'game_over':
+      if (data.players?.[0]?.tags !== undefined) { tgHandleGameOver(data); return; }
+      break;
+  }
+  // SketchMatch phases
+  currentPhase = data.phase;
+  showScreen('s-game');
+  switch (data.phase) {
+    case 'round_intro':   handleRoundIntro(data);   break;
+    case 'drawing':       handleDrawing(data);       break;
+    case 'guessing':      handleGuessing(data);      break;
+    case 'voting':        handleVoting(data);        break;
+    case 'round_results': handleResults(data);       break;
+    case 'game_over':     handleGameOver(data);      break;
+  }
+});
+
+function tgHandleSpinReady(d) {
+  tgWheelSegments = d.wheelSegments;
+  showScreen('s-game');
+  showPhasePanel('p-tg-spin-ready');
+  timerMax = 999;
+  document.getElementById('hdr-phase').textContent = `Turn ${d.turnNumber}/${d.totalTurns}`;
+  document.getElementById('hdr-round').textContent = 'Tag Out';
+
+  const chip = document.getElementById('tg-sr-spinner');
+  chip.textContent       = `${d.spinner.name} is spinning`;
+  chip.style.background  = d.spinner.color + '44';
+  chip.style.borderLeft  = `4px solid ${d.spinner.color}`;
+
+  tgDrawWheel(document.getElementById('tg-host-wheel'), d.wheelSegments, tgWheelRotation);
+  tgRenderPlayerTags('tg-sr-players', d.allPlayers);
+}
+
+function tgHandleSpinning(d) {
+  tgWheelSegments = d.wheelSegments;
+  showPhasePanel('p-tg-spinning');
+  document.getElementById('hdr-phase').textContent = 'Spinning!';
+
+  const chip = document.getElementById('tg-sp-spinner');
+  chip.textContent      = d.spinner.name;
+  chip.style.background = d.spinner.color + '44';
+  chip.style.borderLeft = `4px solid ${d.spinner.color}`;
+
+  tgAnimateSpin(
+    document.getElementById('tg-host-wheel-spin'),
+    d.wheelSegments, tgWheelRotation, d.resultIndex,
+    () => { tgWheelRotation = tgWheelRotation; }
+  );
+}
+
+function tgHandleAdjResult(d) {
+  showPhasePanel('p-tg-adj-result');
+  timerMax = 4;
+  document.getElementById('hdr-phase').textContent = 'New Tag!';
+  document.getElementById('tg-ar-adj').textContent = d.adjective;
+
+  const chip = document.getElementById('tg-ar-spinner');
+  chip.textContent       = `${d.spinner.name} gets:`;
+  chip.style.background  = d.spinner.color + '44';
+  chip.style.borderLeft  = `4px solid ${d.spinner.color}`;
+
+  tgDrawWheel(document.getElementById('tg-host-wheel-adj'), tgWheelSegments, tgWheelRotation);
+  tgRenderPlayerTags('tg-ar-players', d.allPlayers, d.spinner.id);
+}
+
+function tgHandleEventResult(d) {
+  showPhasePanel('p-tg-event-result');
+  timerMax = 5;
+  document.getElementById('hdr-phase').textContent = 'Event!';
+
+  const chip = document.getElementById('tg-er-spinner');
+  chip.textContent       = d.spinner.name;
+  chip.style.background  = d.spinner.color + '44';
+  chip.style.borderLeft  = `4px solid ${d.spinner.color}`;
+
+  const ev = d.event;
+  document.getElementById('tg-er-event').innerHTML = `
+    <div class="tg-event-icon">${esc(ev.icon)}</div>
+    <div class="tg-event-name">${esc(ev.name)}</div>
+    <div class="tg-event-desc">${esc(ev.description)}</div>
+  `;
+  tgDrawWheel(document.getElementById('tg-host-wheel-evt'), tgWheelSegments, tgWheelRotation);
+}
+
+function tgHandleEventResolve(d) {
+  showPhasePanel('p-tg-event-resolve');
+  document.getElementById('hdr-phase').textContent = 'Event Resolving…';
+
+  const ev = d.event;
+  document.getElementById('tg-evr-event').innerHTML = `
+    <div class="tg-event-name">${esc(ev.icon)} ${esc(ev.name)}</div>
+    <div class="tg-event-desc">${esc(ev.description)}</div>
+  `;
+  document.getElementById('tg-evr-status').textContent =
+    ev.needsChoice === 'vote'
+      ? `Waiting for audience votes…`
+      : `Waiting for ${esc(d.spinner.name)} to choose…`;
+
+  tgDrawWheel(document.getElementById('tg-host-wheel-evr'), tgWheelSegments, tgWheelRotation);
+  tgRenderPlayerTags('tg-evr-players', d.allPlayers);
+}
+
+function tgHandleEventApplied(d) {
+  showPhasePanel('p-tg-event-applied');
+  document.getElementById('hdr-phase').textContent = 'Tags Updated';
+  tgDrawWheel(document.getElementById('tg-host-wheel-eva'), tgWheelSegments, tgWheelRotation);
+  tgRenderPlayerTags('tg-eva-players', d.allPlayers);
+}
+
+function tgHandleTaskIntro(d) {
+  showPhasePanel('p-tg-task-intro');
+  timerMax = 6;
+  document.getElementById('hdr-phase').textContent = 'Task!';
+  document.getElementById('tg-ti-prompt').textContent = d.task.prompt;
+
+  const perfEl = document.getElementById('tg-ti-performers');
+  perfEl.innerHTML = d.performers.map(p => `
+    <div class="tg-spinner-badge" style="background:${p.color}44;border-left:4px solid ${p.color};">
+      ${esc(p.name)} ${p.immune ? '🛡️' : ''}
+    </div>
+  `).join('');
+
+  tgRenderPlayerTags('tg-ti-players', d.allPlayers);
+}
+
+function tgHandleSkit(d) {
+  showPhasePanel('p-tg-skit');
+  timerMax = d.timeLeft;
+  document.getElementById('hdr-phase').textContent = 'Skit!';
+  document.getElementById('tg-skit-prompt').textContent = d.task.prompt;
+  document.getElementById('tg-skit-threshold').textContent =
+    `${d.threshold} / ${d.nonPerformerCount} votes to fail`;
+
+  tgRenderSkitPerformers(d.performers, d.calloutData, d.threshold, d.nonPerformerCount);
+}
+
+function tgHandleSkitResult(d) {
+  showPhasePanel('p-tg-skit-result');
+  timerMax = 8;
+  document.getElementById('hdr-phase').textContent = 'Results';
+
+  const resEl = document.getElementById('tg-sr-results');
+  resEl.innerHTML = d.performerResults.map(p => `
+    <div class="performer-card ${p.immune ? 'immune-glow' : ''}" style="border-top:3px solid ${p.color};">
+      <div class="performer-card-name">${esc(p.name)} ${p.delta > 0 ? `<span style="color:var(--teal);font-size:14px;">+${p.delta}</span>` : ''}</div>
+      ${p.survivedTags.map(t => `<div class="performer-tag-row"><span>${esc(t)}</span><span style="color:var(--teal);">✓</span></div>`).join('')}
+      ${p.failedTags.map(t  => `<div class="performer-tag-row failed"><span>${esc(t)}</span><span style="color:var(--coral);">✗</span></div>`).join('')}
+    </div>
+  `).join('');
+
+  const scEl = document.getElementById('tg-sr-scores');
+  scEl.innerHTML = d.allPlayers.map(p => `
+    <div class="score-row">
+      <div class="player-dot" style="background:${p.color}"></div>
+      <div class="score-name">${esc(p.name)}</div>
+      <div class="score-total">${p.score}</div>
+    </div>
+  `).join('');
+}
+
+socket.on('host:callout_update', ({ calloutData }) => {
+  if (currentPhase === 'skit') {
+    // Re-render performer cards with updated callout pips
+    // We don't have performers/threshold cached here, use last known
+    const performers = window._tgLastPerformers || [];
+    const threshold  = window._tgLastThreshold  || 1;
+    const total      = window._tgLastNonPerf     || 1;
+    tgRenderSkitPerformers(performers, calloutData, threshold, total);
+  }
+});
+
+socket.on('host:tag_failed', ({ performerName, tag }) => {
+  // Flash a notification
+  const notif = document.createElement('div');
+  notif.style.cssText = `
+    position:fixed;top:80px;right:24px;
+    background:var(--coral);color:#fff;
+    border-radius:12px;padding:12px 20px;
+    font-weight:800;font-size:18px;
+    z-index:999;animation:fadeOut 3s forwards;
+  `;
+  notif.textContent = `❌ ${performerName}: "${tag}" FAILED!`;
+  document.body.appendChild(notif);
+  setTimeout(() => notif.remove(), 3000);
+});
+
+// TagGame game_over is handled inline in tgHandleSkitResult flow
+// This stub is called from the main host:phase handler
+function tgHandleGameOver(data) {
+  showPhasePanel('p-tg-tg-gameover');
+  document.getElementById('hdr-phase').textContent = 'Game Over';
+  const medals = ['🥇','🥈','🥉'];
+  const heights = [200,160,120];
+  const podOrder = data.players.length >= 3 ? [1,0,2] : [0,1,2];
+  const podium = document.getElementById('tg-podium');
+  podium.innerHTML = podOrder.filter(i => data.players[i]).map(i => {
+    const p = data.players[i];
+    return `<div class="podium-slot">
+      <div class="podium-name">${esc(p.name)}</div>
+      <div class="podium-score">${p.score} pts</div>
+      <div class="podium-block" style="height:${heights[i]}px;background:${p.color};color:#000;">${medals[i]||p.rank}</div>
+    </div>`;
+  }).join('');
+
+  const fl = document.getElementById('tg-final-list');
+  fl.innerHTML = data.players.map(p => `
+    <div class="final-row">
+      <div class="final-rank">${p.rank}</div>
+      <div class="player-dot" style="background:${p.color}"></div>
+      <div class="final-name">${esc(p.name)}</div>
+      <div class="final-score">${p.score} pts</div>
+    </div>
+  `).join('');
+}
+
+// ── TagGame UI helpers ─────────────────────────────────────
+
+function tgRenderPlayerTags(elId, players, highlightId = null) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.innerHTML = players.map(p => `
+    <div class="tg-player-row" style="${p.id === highlightId ? 'border:1px solid '+p.color : ''}">
+      <div class="tg-player-dot" style="background:${p.color}"></div>
+      <div class="tg-player-name">${esc(p.name)}</div>
+      ${p.immune ? '<div class="tg-immune-badge">🛡️ Immune</div>' : ''}
+      ${p.tags.map(t => `<span class="tg-tag-chip">${esc(t)}</span>`).join('')}
+      ${p.tags.length === 0 ? '<span style="color:var(--muted);font-size:12px;">No tags yet</span>' : ''}
+    </div>
+  `).join('');
+}
+
+function tgRenderSkitPerformers(performers, calloutData, threshold, nonPerformerCount) {
+  currentPhase = 'skit';
+  window._tgLastPerformers = performers;
+  window._tgLastThreshold  = threshold;
+  window._tgLastNonPerf    = nonPerformerCount;
+
+  const el = document.getElementById('tg-skit-performers');
+  if (!el) return;
+
+  el.innerHTML = performers.map(p => {
+    const tagRows = p.tags.map(tag => {
+      const key    = `${p.id}:${tag}`;
+      const entry  = calloutData?.[key];
+      const count  = entry?.count || 0;
+      const failed = entry?.failed || false;
+      const pips   = Array.from({ length: Math.max(threshold, count) }, (_, i) =>
+        `<div class="callout-pip ${i < count ? (failed ? 'fail' : 'filled') : ''}"></div>`
+      ).join('');
+      return `
+        <div class="performer-tag-row ${failed ? 'failed' : ''}">
+          <span>${esc(tag)}</span>
+          <div class="callout-bar">${pips}<span style="font-size:12px;color:var(--muted);margin-left:4px;">${count}/${threshold}</span></div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="performer-card ${p.immune ? 'immune-glow' : ''}" style="border-top:3px solid ${p.color}">
+        <div class="performer-card-name">${esc(p.name)} ${p.immune ? '🛡️' : ''}</div>
+        ${tagRows || '<p style="color:var(--muted);font-size:13px;">No tags</p>'}
+      </div>
+    `;
+  }).join('');
+}

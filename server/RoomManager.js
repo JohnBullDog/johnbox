@@ -34,9 +34,11 @@
  */
 
 const SketchMatch = require('./games/SketchMatch');
+const TagGame     = require('./games/TagGame');
 
 const GAMES = {
   'sketch-match': SketchMatch,
+  'tag-out':      TagGame,
 };
 
 const PLAYER_COLORS = [

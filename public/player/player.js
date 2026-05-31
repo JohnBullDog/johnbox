@@ -76,6 +76,22 @@ socket.on('timer', ({ timeLeft }) => {
 // ── Phase routing ──────────────────────────────────────────
 
 socket.on('player:phase', (data) => {
+  // TagGame phases
+  switch (data.phase) {
+    case 'spin_ready':    tgHandleSpinReady(data);    return;
+    case 'spinning':      tgHandleSpinning(data);     return;
+    case 'adj_result':    tgHandleAdjResult(data);    return;
+    case 'event_result':  tgHandleEventResult(data);  return;
+    case 'event_resolve': tgHandleEventResolve(data); return;
+    case 'event_applied': tgHandleEventApplied(data); return;
+    case 'task_intro':    tgHandleTaskIntro(data);    return;
+    case 'skit':          tgHandleSkit(data);         return;
+    case 'skit_result':   tgHandleSkitResult(data);   return;
+    case 'game_over':
+      if (data.players?.[0]?.tags !== undefined) { tgHandleGameOver(data); return; }
+      break;
+  }
+  // SketchMatch phases
   switch (data.phase) {
     case 'round_intro':   handleRoundIntro(data);   break;
     case 'drawing':       handleDrawing(data);       break;
@@ -384,3 +400,338 @@ socket.on('room:closed', ({ message }) => {
 
 // Fix: canvas var referenced before initCanvas in event handlers
 const canvas = document.getElementById('draw-canvas');
+
+// ═══════════════════════════════════════════════════════════
+// TAG GAME — player handlers
+// ═══════════════════════════════════════════════════════════
+
+let tgWheelSegments  = null;
+let tgWheelRotation  = 0;
+let tgMyCallouts     = {};   // { "playerId:tag": true }
+let tgAnimFrame      = null;
+
+// ── Wheel draw (shared with host.js logic, mobile-sized) ──
+
+function tgDrawWheel(canvas, segments, rotationDeg) {
+  if (!canvas || !segments) return;
+  const ctx = canvas.getContext('2d');
+  const cx  = canvas.width / 2;
+  const cy  = canvas.height / 2;
+  const r   = Math.min(cx, cy) - 4;
+  const n   = segments.length;
+  const arc = (2 * Math.PI) / n;
+  const off = (rotationDeg * Math.PI / 180) - Math.PI / 2;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const adjPalette = ['#1e3a5f','#243d6e','#2a4575','#1a3560','#1d3d6a','#20406d','#22427a','#193358'];
+
+  segments.forEach((seg, i) => {
+    const a0 = off + i * arc, a1 = a0 + arc;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, a0, a1);
+    ctx.closePath();
+    ctx.fillStyle = seg.type === 'event' ? '#6b3dcc' : adjPalette[i % adjPalette.length];
+    ctx.fill();
+    ctx.strokeStyle = '#0f0f1a';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    const mid = a0 + arc / 2;
+    const tr  = r * 0.65;
+    ctx.save();
+    ctx.translate(cx + Math.cos(mid) * tr, cy + Math.sin(mid) * tr);
+    ctx.rotate(mid + Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 9px sans-serif';
+    const label = seg.type === 'event' ? seg.name : seg.value;
+    const maxC  = Math.floor(r / 14);
+    ctx.fillText(label.length > maxC ? label.slice(0, maxC - 1) + '…' : label, 0, 0);
+    ctx.restore();
+  });
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, 2 * Math.PI);
+  ctx.strokeStyle = '#7c4dff';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, 12, 0, 2 * Math.PI);
+  ctx.fillStyle = '#0f0f1a';
+  ctx.fill();
+}
+
+function tgSizeAndDrawWheel(segments, rotation) {
+  const c = document.getElementById('tg-player-wheel');
+  if (!c) return;
+  const size = Math.min(c.parentElement.clientWidth, c.parentElement.clientHeight) || 280;
+  c.width = size; c.height = size;
+  tgDrawWheel(c, segments, rotation);
+}
+
+function tgAnimateSpin(segments, fromDeg, resultIndex, onDone) {
+  if (tgAnimFrame) cancelAnimationFrame(tgAnimFrame);
+  const n          = segments.length;
+  const segDeg     = 360 / n;
+  const segCenter  = resultIndex * segDeg + segDeg / 2;
+  const adjustment = (360 - segCenter + 360) % 360;
+  const targetDeg  = fromDeg + 5 * 360 + adjustment;
+  const duration   = 4500;
+  const start      = performance.now();
+
+  const c = document.getElementById('tg-player-wheel');
+
+  function frame(now) {
+    const t     = Math.min((now - start) / duration, 1);
+    const eased = 1 - Math.pow(1 - t, 5);
+    const deg   = fromDeg + (targetDeg - fromDeg) * eased;
+    tgDrawWheel(c, segments, deg);
+    if (t < 1) {
+      tgAnimFrame = requestAnimationFrame(frame);
+    } else {
+      tgWheelRotation = targetDeg % 360;
+      if (onDone) onDone();
+    }
+  }
+  tgAnimFrame = requestAnimationFrame(frame);
+}
+
+// TagGame phases are dispatched from the existing player:phase handler below
+
+function tgHandleSpinReady(d) {
+  tgWheelSegments = d.wheelSegments;
+  tgMyCallouts    = {};
+
+  if (d.role === 'spinner') {
+    showScreen('s-tg-spin');
+    tgSizeAndDrawWheel(d.wheelSegments, tgWheelRotation);
+    tgRenderMyTags('tg-spin-my-tags', myPlayer?.id, d.allPlayers);
+  } else {
+    showScreen('s-tg-watch-spin');
+    document.getElementById('tg-ws-title').textContent = `${esc(d.spinner.name)} is spinning…`;
+    document.getElementById('tg-ws-sub').textContent   = 'Watch the big screen!';
+    tgRenderMyTags('tg-ws-my-tags', myPlayer?.id, d.allPlayers);
+  }
+}
+
+function tgHandleSpinning(d) {
+  tgWheelSegments = d.wheelSegments;
+
+  if (d.role === 'spinner') {
+    showScreen('s-tg-spin');
+    tgSizeAndDrawWheel(d.wheelSegments, tgWheelRotation);
+    tgAnimateSpin(d.wheelSegments, tgWheelRotation, d.resultIndex, () => {});
+  } else {
+    showScreen('s-tg-watch-spin');
+    document.getElementById('tg-ws-title').textContent = `${esc(d.spinner.name)} is spinning!`;
+    document.getElementById('tg-ws-sub').textContent   = 'Watch the big screen!';
+    tgSizeAndDrawWheel(d.wheelSegments, tgWheelRotation);
+    tgAnimateSpin(d.wheelSegments, tgWheelRotation, d.resultIndex, () => {});
+  }
+}
+
+function tgHandleAdjResult(d) {
+  showScreen('s-tg-adj-result');
+  const isMe = myPlayer && d.spinner.id === myPlayer.id;
+  document.getElementById('tg-ar-who').textContent = isMe ? 'You got:' : `${d.spinner.name} got:`;
+  document.getElementById('tg-ar-tag').textContent = d.adjective;
+  tgRenderMyTags('tg-ar-my-tags', myPlayer?.id, d.allPlayers);
+}
+
+function tgHandleEventResult(d) {
+  showScreen('s-tg-event-result');
+  const isMe = myPlayer && d.spinner.id === myPlayer.id;
+  document.getElementById('tg-er-who').textContent  = isMe ? 'You landed on:' : `${d.spinner.name} landed on:`;
+  document.getElementById('tg-er-icon').textContent = d.event.icon;
+  document.getElementById('tg-er-name').textContent = d.event.name;
+  document.getElementById('tg-er-desc').textContent = d.event.description;
+}
+
+function tgHandleEventResolve(d) {
+  if (d.role === 'chooser') {
+    showScreen('s-tg-event-choose');
+    document.getElementById('tg-ec-title').textContent = `${d.event.icon} ${d.event.name}`;
+    document.getElementById('tg-ec-sub').textContent   = d.event.description;
+
+    const list = document.getElementById('tg-ec-options');
+
+    if (d.event.needsChoice === 'player' && d.options) {
+      // Pick a player
+      list.innerHTML = d.options.map(p => `
+        <button class="tg-choose-btn" onclick="tgChoosePlayer('${p.id}')">
+          <span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${p.color};margin-right:8px;vertical-align:middle;"></span>
+          ${esc(p.name)}
+          <small style="color:var(--muted);"> — ${p.tags.join(', ') || 'no tags'}</small>
+        </button>
+      `).join('');
+    } else if (d.event.needsChoice === 'adjective' && d.adjectives) {
+      // Wildcard: pick any adjective
+      list.innerHTML = d.adjectives.map(adj => `
+        <button class="tg-choose-btn" onclick="tgChooseTag('${esc(adj)}')">${esc(adj)}</button>
+      `).join('');
+    }
+  } else if (d.role === 'voter' && d.adjectives) {
+    // Audience pick: suggest a tag for the spinner
+    showScreen('s-tg-event-choose');
+    document.getElementById('tg-ec-title').textContent = `${d.event.icon} Audience Choice!`;
+    document.getElementById('tg-ec-sub').textContent   = `Suggest a tag for ${d.spinner.name}`;
+    const list = document.getElementById('tg-ec-options');
+    list.innerHTML = d.adjectives.map(adj => `
+      <button class="tg-choose-btn" onclick="tgVoteTag('${esc(adj)}')">${esc(adj)}</button>
+    `).join('');
+  } else {
+    showWaiting('⏳', 'Event resolving…', 'Wait for the action to happen');
+  }
+}
+
+function tgHandleEventApplied(d) {
+  tgRenderMyTags('tg-ws-my-tags', myPlayer?.id, d.allPlayers);
+  showWaiting('✅', 'Tags updated!', 'Get ready for your task…');
+}
+
+function tgHandleTaskIntro(d) {
+  showScreen('s-tg-task-intro');
+  document.getElementById('tg-task-prompt').textContent = d.task.prompt;
+
+  const perfEl = document.getElementById('tg-task-performers');
+  perfEl.innerHTML = d.performers.map(p => `
+    <span style="background:${p.color}44;border:2px solid ${p.color};border-radius:10px;padding:6px 12px;font-weight:700;font-size:14px;">
+      ${esc(p.name)}${p.immune ? ' 🛡️' : ''}
+    </span>
+  `).join('');
+
+  tgRenderMyTags('tg-task-my-tags', myPlayer?.id, d.allPlayers);
+}
+
+function tgHandleSkit(d) {
+  const isPerformer = d.role === 'performer';
+
+  if (isPerformer) {
+    showScreen('s-tg-performing');
+    document.getElementById('tg-perf-prompt').textContent = d.task.prompt;
+    const tagsEl = document.getElementById('tg-perf-tags');
+    tagsEl.innerHTML = (d.myTags || []).map(t =>
+      `<div class="tg-tag-pill ${d.immune ? 'immune' : ''}">${esc(t)}${d.immune ? ' 🛡️' : ''}</div>`
+    ).join('');
+  } else {
+    tgMyCallouts = d.myCallouts || {};
+    showScreen('s-tg-vote');
+    tgRenderVotePerformers(d.performers, d.calloutData, d.threshold, d.nonPerformerCount);
+  }
+}
+
+function tgHandleSkitResult(d) {
+  showScreen('s-tg-skit-result');
+  const delta = d.myDelta ?? 0;
+  const myP   = d.allPlayers.find(p => myPlayer && p.id === myPlayer.id);
+
+  document.getElementById('tg-sr-delta').textContent = delta > 0 ? `+${delta}` : delta === 0 ? '—' : `${delta}`;
+  document.getElementById('tg-sr-msg').textContent   = delta > 0 ? 'Nice work!' : 'Better luck next time!';
+  document.getElementById('tg-sr-score').textContent = myP ? `Total: ${myP.score} pts` : '';
+
+  const tagsEl = document.getElementById('tg-sr-tags');
+  tagsEl.innerHTML = (myP?.tags || []).map(t =>
+    `<div class="tg-tag-pill">${esc(t)}</div>`
+  ).join('') || '<span style="color:var(--muted);">No tags</span>';
+}
+
+function tgHandleGameOver(d) {
+  const medals = ['🥇','🥈','🥉'];
+  const badge  = document.getElementById('go-rank-badge');
+  badge.textContent = medals[d.myRank - 1] ?? `#${d.myRank}`;
+
+  const list = document.getElementById('go-player-list');
+  list.innerHTML = d.players.map(p => {
+    const isMe = myPlayer && p.id === myPlayer.id;
+    return `<div class="final-player-row ${isMe ? 'fp-me' : ''}">
+      <div class="fp-rank">${p.rank}</div>
+      <div class="player-dot" style="width:14px;height:14px;border-radius:50%;background:${p.color};flex-shrink:0;"></div>
+      <div class="fp-name">${esc(p.name)}${isMe ? ' (you)' : ''}</div>
+      <div class="fp-score">${p.score} pts</div>
+    </div>`;
+  }).join('');
+
+  showScreen('s-gameover');
+}
+
+// Live callout re-renders are handled by the main player:phase handler above
+
+// ── TagGame player actions ─────────────────────────────────
+
+document.getElementById('tg-btn-spin').addEventListener('click', () => {
+  document.getElementById('tg-btn-spin').disabled = true;
+  socket.emit('game:action', { type: 'spin' });
+});
+
+function tgChoosePlayer(targetId) {
+  document.querySelectorAll('.tg-choose-btn').forEach(b => b.disabled = true);
+  socket.emit('game:action', { type: 'event_choice', targetId });
+  showWaiting('✅', 'Choice made!', 'Waiting for event to resolve…');
+}
+
+function tgChooseTag(tag) {
+  document.querySelectorAll('.tg-choose-btn').forEach(b => b.disabled = true);
+  socket.emit('game:action', { type: 'event_choose_tag', tag });
+  showWaiting('✅', 'Tag chosen!', 'Waiting…');
+}
+
+function tgVoteTag(tag) {
+  document.querySelectorAll('.tg-choose-btn').forEach(b => b.disabled = true);
+  socket.emit('game:action', { type: 'audience_vote', tag });
+  showWaiting('✅', `You voted for: "${tag}"`, 'Waiting for everyone…');
+}
+
+function tgCalloutTag(targetId, tag) {
+  const key = `${targetId}:${tag}`;
+  if (tgMyCallouts[key]) return;
+  tgMyCallouts[key] = true;
+  // Update button immediately
+  const btn = document.querySelector(`[data-callout-key="${key}"]`);
+  if (btn) btn.classList.add('called-out');
+  socket.emit('game:action', { type: 'callout_tag', targetId, tag });
+}
+
+// ── TagGame render helpers ─────────────────────────────────
+
+function tgRenderMyTags(elId, myId, allPlayers) {
+  const el = document.getElementById(elId);
+  if (!el || !myId) return;
+  const me = allPlayers?.find(p => p.id === myId);
+  if (!me) return;
+  el.innerHTML = (me.tags || []).map(t =>
+    `<div class="tg-tag-pill ${me.immune ? 'immune' : ''}">${esc(t)}</div>`
+  ).join('') || '<span style="color:var(--muted);font-size:13px;">No tags yet</span>';
+}
+
+function tgRenderVotePerformers(performers, calloutData, threshold, nonPerformerCount) {
+  const el = document.getElementById('tg-vote-performers');
+  if (!el) return;
+  el.innerHTML = performers.map(p => {
+    const tagBtns = p.tags.map(tag => {
+      const key    = `${p.id}:${tag}`;
+      const entry  = calloutData?.[key];
+      const count  = entry?.count || 0;
+      const failed = entry?.failed || false;
+      const myVote = tgMyCallouts?.[key];
+      const cls    = failed ? 'failed-tag' : myVote ? 'called-out' : '';
+      return `
+        <button class="tg-callout-btn ${cls}"
+          data-callout-key="${key}"
+          ${failed || myVote ? 'disabled' : ''}
+          onclick="tgCalloutTag('${p.id}', '${esc(tag)}')">
+          <span>${esc(tag)}</span>
+          <span class="tg-call-count">${count}/${threshold}${failed ? ' ❌' : ''}</span>
+        </button>
+      `;
+    }).join('');
+    return `
+      <div class="tg-performer-section">
+        <div class="tg-perf-name" style="color:${p.color}">${esc(p.name)} ${p.immune ? '🛡️' : ''}</div>
+        ${tagBtns || '<p style="color:var(--muted);font-size:13px;">No tags to call out</p>'}
+      </div>
+    `;
+  }).join('');
+}

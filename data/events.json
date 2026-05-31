@@ -1,0 +1,66 @@
+[
+  {
+    "id": "swap_random",
+    "name": "Tag Swap!",
+    "icon": "🔄",
+    "description": "Swap ALL your tags with a randomly chosen player.",
+    "action": "swap_random",
+    "needsChoice": false
+  },
+  {
+    "id": "steal_tag",
+    "name": "Tag Thief!",
+    "icon": "🦹",
+    "description": "Steal one tag from any player of your choice.",
+    "action": "steal_tag",
+    "needsChoice": "player"
+  },
+  {
+    "id": "add_tag",
+    "name": "Double Trouble!",
+    "icon": "✌️",
+    "description": "Spin again and add a SECOND tag. You must embody BOTH during tasks.",
+    "action": "add_tag",
+    "needsChoice": false
+  },
+  {
+    "id": "give_tag",
+    "name": "Generous Gift",
+    "icon": "🎁",
+    "description": "Give your most recent tag to any player.",
+    "action": "give_tag",
+    "needsChoice": "player"
+  },
+  {
+    "id": "immunity",
+    "name": "Plot Armor!",
+    "icon": "🛡️",
+    "description": "Your tags CANNOT be called out during your next task.",
+    "action": "immunity",
+    "needsChoice": false
+  },
+  {
+    "id": "everyone_rotates",
+    "name": "Musical Tags!",
+    "icon": "🎶",
+    "description": "Everyone passes ALL their tags to the player on their left.",
+    "action": "everyone_rotates",
+    "needsChoice": false
+  },
+  {
+    "id": "wildcard",
+    "name": "Wild Card!",
+    "icon": "🃏",
+    "description": "Choose any adjective from the full list — pick your favorite!",
+    "action": "wildcard",
+    "needsChoice": "adjective"
+  },
+  {
+    "id": "audience_pick",
+    "name": "Audience Choice!",
+    "icon": "🗳️",
+    "description": "All other players each suggest a tag for you. The most popular one sticks.",
+    "action": "audience_pick",
+    "needsChoice": "vote"
+  }
+]

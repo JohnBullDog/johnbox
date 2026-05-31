@@ -1,0 +1,122 @@
+[
+  {
+    "id": "job_interview",
+    "prompt": "{P1} is interviewing {P2} for a job. {P1} secretly does not want to hire anyone.",
+    "playerCount": 2,
+    "category": "partner"
+  },
+  {
+    "id": "first_date",
+    "prompt": "{P1} and {P2} are on a first date at a fancy restaurant. Neither wants to pay the bill.",
+    "playerCount": 2,
+    "category": "partner"
+  },
+  {
+    "id": "doctor_patient",
+    "prompt": "{P1} is a doctor and {P2} is the patient. {P2} is convinced nothing is wrong with them.",
+    "playerCount": 2,
+    "category": "partner"
+  },
+  {
+    "id": "real_estate",
+    "prompt": "{P1} is a real estate agent desperately trying to sell {P2} a terrible house.",
+    "playerCount": 2,
+    "category": "partner"
+  },
+  {
+    "id": "airplane_seats",
+    "prompt": "{P1} and {P2} have both been assigned the same airplane seat. The flight leaves in 2 minutes.",
+    "playerCount": 2,
+    "category": "partner"
+  },
+  {
+    "id": "cooking_show",
+    "prompt": "{P1} is a cooking show host and {P2} is their guest who has secretly never cooked anything before.",
+    "playerCount": 2,
+    "category": "partner"
+  },
+  {
+    "id": "lost_in_ikea",
+    "prompt": "{P1} and {P2} have been lost in IKEA for 3 hours and are starting to lose their minds.",
+    "playerCount": 2,
+    "category": "partner"
+  },
+  {
+    "id": "superhero_sidekick",
+    "prompt": "{P1} is a superhero. {P2} is their sidekick who is much better at the job but too polite to say so.",
+    "playerCount": 2,
+    "category": "partner"
+  },
+  {
+    "id": "museum_guide",
+    "prompt": "{P1} is a museum tour guide who knows nothing about art. {P2} is a very suspicious visitor.",
+    "playerCount": 2,
+    "category": "partner"
+  },
+  {
+    "id": "motivational_speech",
+    "prompt": "{P1} gives a passionate motivational speech to the audience about why socks are the most important thing in the world.",
+    "playerCount": 1,
+    "category": "solo"
+  },
+  {
+    "id": "product_infomercial",
+    "prompt": "{P1} stars in a live infomercial selling an ordinary household item as if it is revolutionary.",
+    "playerCount": 1,
+    "category": "solo"
+  },
+  {
+    "id": "news_reporter",
+    "prompt": "{P1} is a news reporter live on the scene of a very minor and boring local event.",
+    "playerCount": 1,
+    "category": "solo"
+  },
+  {
+    "id": "acceptance_speech",
+    "prompt": "{P1} delivers an Oscar acceptance speech for a film they made entirely by accident.",
+    "playerCount": 1,
+    "category": "solo"
+  },
+  {
+    "id": "tutorial_video",
+    "prompt": "{P1} films a tutorial video explaining how to do something they have clearly never done before.",
+    "playerCount": 1,
+    "category": "solo"
+  },
+  {
+    "id": "job_application",
+    "prompt": "{P1} calls in to a radio show to defend their unusual life choices in front of a live audience.",
+    "playerCount": 1,
+    "category": "solo"
+  },
+  {
+    "id": "neighbor_dispute",
+    "prompt": "{P1} and {P2} are neighbors having an argument about something increasingly petty.",
+    "playerCount": 2,
+    "category": "partner"
+  },
+  {
+    "id": "time_capsule",
+    "prompt": "{P1} is recording a time capsule video for people 100 years in the future. {P2} keeps interrupting.",
+    "playerCount": 2,
+    "category": "partner"
+  },
+  {
+    "id": "escape_room",
+    "prompt": "{P1} and {P2} are trapped in an escape room. They have found the solution but disagree on how to use it.",
+    "playerCount": 2,
+    "category": "partner"
+  },
+  {
+    "id": "elevator",
+    "prompt": "{P1} and {P2} are stuck in an elevator together. They have never met. They will be here for a while.",
+    "playerCount": 2,
+    "category": "partner"
+  },
+  {
+    "id": "wilderness",
+    "prompt": "{P1} is an experienced wilderness survival expert. {P2} booked what they thought was a luxury spa weekend.",
+    "playerCount": 2,
+    "category": "partner"
+  }
+]

@@ -330,6 +330,92 @@
     .fp-name { flex: 1; font-weight: 600; }
     .fp-score { font-weight: 700; color: var(--teal); }
     .fp-me { border: 2px solid var(--purple); }
+
+    /* ── TagGame player screens ──────────────────────── */
+    #s-tg-spin, #s-tg-watch-spin { text-align: center; gap: 16px; }
+    .tg-wheel-container {
+      position: relative;
+      width: min(320px, 90vw);
+      height: min(320px, 90vw);
+    }
+    .tg-wheel-pointer-mobile {
+      position: absolute;
+      top: -12px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 22px;
+      z-index: 10;
+    }
+    #tg-player-wheel {
+      width: 100%; height: 100%;
+      border-radius: 50%;
+    }
+    .tg-my-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      width: 100%;
+      max-width: 360px;
+    }
+    .tg-tag-pill {
+      background: var(--purple);
+      border-radius: 20px;
+      padding: 8px 16px;
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .tg-tag-pill.immune { background: var(--teal); color: #000; }
+
+    /* Voting screen */
+    #s-tg-vote { align-items: stretch; gap: 10px; padding: 12px; }
+    #s-tg-vote h2 { text-align: center; font-size: 20px; }
+    .tg-performer-section {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .tg-perf-name { font-size: 16px; font-weight: 800; }
+    .tg-callout-btn {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid var(--card);
+      border-radius: 10px;
+      background: var(--panel);
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: border-color .15s, background .15s;
+    }
+    .tg-callout-btn:active { transform: scale(.98); }
+    .tg-callout-btn.called-out { background: var(--coral); border-color: var(--coral); color: #fff; }
+    .tg-callout-btn.failed-tag { background: #4a1a1a; border-color: var(--coral); }
+    .tg-callout-btn:disabled   { opacity: .5; cursor: default; }
+    .tg-call-count { font-size: 13px; opacity: .8; white-space: nowrap; }
+
+    /* Event chooser */
+    #s-tg-event-choose { align-items: stretch; gap: 10px; overflow-y: auto; }
+    .tg-choose-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; }
+    .tg-choose-btn {
+      width: 100%; padding: 14px 16px;
+      border: 2px solid var(--card);
+      border-radius: 12px;
+      background: var(--card);
+      color: var(--text);
+      font-size: 16px; font-weight: 600;
+      text-align: left; cursor: pointer;
+      font-family: inherit;
+    }
+    .tg-choose-btn:active { transform: scale(.98); }
+    .tg-choose-btn:hover  { border-color: var(--purple); }
   </style>
 </head>
 <body>
@@ -437,6 +523,79 @@
   <button class="btn btn-primary" style="max-width:300px;margin-top:8px;" onclick="location.reload()">
     Play Again
   </button>
+</div>
+
+<!-- ── TagGame: Spin (your turn) ──────────────────────── -->
+<div id="s-tg-spin" class="screen">
+  <p style="color:var(--muted);font-size:14px;text-transform:uppercase;letter-spacing:2px;">Your turn!</p>
+  <div class="tg-wheel-container">
+    <div class="tg-wheel-pointer-mobile">▼</div>
+    <canvas id="tg-player-wheel"></canvas>
+  </div>
+  <button class="btn btn-primary" id="tg-btn-spin" style="max-width:300px;">🎡 SPIN!</button>
+  <div class="tg-my-tags" id="tg-spin-my-tags"></div>
+</div>
+
+<!-- ── TagGame: Watch someone else spin ──────────────── -->
+<div id="s-tg-watch-spin" class="screen">
+  <div class="waiting-icon">🎡</div>
+  <div class="waiting-title" id="tg-ws-title">Watching spin…</div>
+  <div class="waiting-sub" id="tg-ws-sub"></div>
+  <div class="tg-my-tags" id="tg-ws-my-tags"></div>
+</div>
+
+<!-- ── TagGame: Result (adjective) ───────────────────── -->
+<div id="s-tg-adj-result" class="screen" style="text-align:center;gap:14px;">
+  <div style="font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;" id="tg-ar-who"></div>
+  <div style="background:var(--teal);color:#000;border-radius:14px;padding:20px 24px;font-size:28px;font-weight:900;max-width:320px;width:100%;" id="tg-ar-tag"></div>
+  <div class="tg-my-tags" id="tg-ar-my-tags"></div>
+</div>
+
+<!-- ── TagGame: Result (event) ───────────────────────── -->
+<div id="s-tg-event-result" class="screen" style="text-align:center;gap:14px;">
+  <div style="font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;" id="tg-er-who"></div>
+  <div style="background:var(--purple);border-radius:14px;padding:20px;width:100%;max-width:340px;">
+    <div style="font-size:48px;" id="tg-er-icon"></div>
+    <div style="font-size:22px;font-weight:900;margin-top:4px;" id="tg-er-name"></div>
+    <div style="font-size:14px;opacity:.85;margin-top:8px;" id="tg-er-desc"></div>
+  </div>
+</div>
+
+<!-- ── TagGame: Event chooser (pick a player) ────────── -->
+<div id="s-tg-event-choose" class="screen">
+  <h2 style="font-size:20px;font-weight:800;text-align:center;" id="tg-ec-title"></h2>
+  <p style="color:var(--muted);font-size:14px;text-align:center;" id="tg-ec-sub"></p>
+  <div class="tg-choose-list" id="tg-ec-options"></div>
+</div>
+
+<!-- ── TagGame: Task intro ───────────────────────────── -->
+<div id="s-tg-task-intro" class="screen" style="text-align:center;gap:14px;">
+  <div style="font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;">Your Task</div>
+  <div style="background:var(--card);border-radius:14px;padding:20px;font-size:17px;font-weight:700;line-height:1.5;max-width:360px;width:100%;" id="tg-task-prompt"></div>
+  <div id="tg-task-performers" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;"></div>
+  <div class="tg-my-tags" id="tg-task-my-tags"></div>
+</div>
+
+<!-- ── TagGame: Performing (your task) ───────────────── -->
+<div id="s-tg-performing" class="screen" style="text-align:center;gap:14px;">
+  <div style="font-size:14px;color:var(--muted);text-transform:uppercase;letter-spacing:2px;">You are performing!</div>
+  <div style="background:var(--card);border-radius:14px;padding:16px;font-size:17px;font-weight:700;line-height:1.5;max-width:360px;width:100%;" id="tg-perf-prompt"></div>
+  <div style="font-size:14px;color:var(--muted);">Stay in character:</div>
+  <div class="tg-my-tags" id="tg-perf-tags"></div>
+</div>
+
+<!-- ── TagGame: Voting (call out tags) ───────────────── -->
+<div id="s-tg-vote" class="screen">
+  <h2>Tap a tag when they break character!</h2>
+  <div id="tg-vote-performers" style="display:flex;flex-direction:column;gap:10px;width:100%;overflow-y:auto;flex:1;"></div>
+</div>
+
+<!-- ── TagGame: Skit result ───────────────────────────── -->
+<div id="s-tg-skit-result" class="screen" style="text-align:center;gap:14px;">
+  <div class="delta-badge" id="tg-sr-delta" style="font-size:48px;font-weight:900;color:var(--teal);">+0</div>
+  <div style="font-size:20px;font-weight:700;" id="tg-sr-msg"></div>
+  <div class="tg-my-tags" id="tg-sr-tags"></div>
+  <div style="color:var(--muted);font-size:15px;" id="tg-sr-score"></div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
