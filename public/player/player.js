@@ -506,14 +506,19 @@ function tgHandleSpinReady(d) {
   tgWheelSegments = d.wheelSegments;
   tgMyCallouts    = {};
 
+  const roundLabel = d.maxRounds > 1
+    ? `Round ${d.roundNumber}/${d.maxRounds} · Turn ${d.turnInRound}/${d.playersPerRound}`
+    : `Turn ${d.turnInRound}/${d.playersPerRound}`;
+
   if (d.role === 'spinner') {
     showScreen('s-tg-spin');
     tgSizeAndDrawWheel(d.wheelSegments, tgWheelRotation);
     tgRenderMyTags('tg-spin-my-tags', myPlayer?.id, d.allPlayers);
+    document.querySelector('#s-tg-spin p').textContent = roundLabel + ' · Your turn!';
   } else {
     showScreen('s-tg-watch-spin');
     document.getElementById('tg-ws-title').textContent = `${esc(d.spinner.name)} is spinning…`;
-    document.getElementById('tg-ws-sub').textContent   = 'Watch the big screen!';
+    document.getElementById('tg-ws-sub').textContent   = roundLabel;
     tgRenderMyTags('tg-ws-my-tags', myPlayer?.id, d.allPlayers);
   }
 }

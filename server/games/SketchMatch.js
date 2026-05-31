@@ -37,7 +37,7 @@ const T_RESULTS  = 10;
 class SketchMatch extends BaseGame {
   constructor(roomCode, io) {
     super(roomCode, io);
-    this.maxRounds   = 3;
+    this.maxRounds   = 3;  // overridden by start() options
     this.round       = 0;
     this.drawerIndex = 0;
     this.prompt      = null;
@@ -49,7 +49,8 @@ class SketchMatch extends BaseGame {
 
   // ── Lifecycle ──────────────────────────────────────────────
 
-  start(players) {
+  start(players, options = {}) {
+    this.maxRounds   = Math.max(1, options.rounds ?? 3);
     this.players     = players.map(p => ({ ...p, score: 0 }));
     this.drawerIndex = 0;
     this.round       = 0;

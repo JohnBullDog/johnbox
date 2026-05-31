@@ -106,14 +106,15 @@ class RoomManager {
     console.log(`[room] ${name} joined ${code}`);
   }
 
-  startGame(socket) {
+  startGame(socket, data = {}) {
     const room = this._hostRoom(socket);
     if (!room) return;
     if (room.players.size < 2) return socket.emit('error', { message: 'Need at least 2 players to start.' });
 
     room.state = 'playing';
-    room.game.start([...room.players.values()]);
-    console.log(`[room] ${room.code} game started`);
+    const options = { rounds: Math.max(1, Math.min(10, parseInt(data.rounds) || 3)) };
+    room.game.start([...room.players.values()], options);
+    console.log(`[room] ${room.code} game started (rounds: ${options.rounds})`);
   }
 
   handleAction(socket, data = {}) {

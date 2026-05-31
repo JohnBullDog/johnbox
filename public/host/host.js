@@ -7,6 +7,15 @@ let roomCode      = null;
 let currentPhase  = null;
 let timerMax      = 60;
 
+const gameSettings = { rounds: 3 };
+const SETTING_LIMITS = { rounds: [1, 10] };
+
+function adjustSetting(key, delta) {
+  const [min, max] = SETTING_LIMITS[key];
+  gameSettings[key] = Math.max(min, Math.min(max, gameSettings[key] + delta));
+  document.getElementById(`setting-${key}`).textContent = gameSettings[key];
+}
+
 // We maintain ONE shared ImageData across phase canvases so the drawing
 // persists when we copy it to the voting/results canvas.
 let drawingSnapshot = null;
@@ -101,7 +110,7 @@ function createRoom() {
 }
 
 function startGame() {
-  socket.emit('game:start');
+  socket.emit('game:start', { rounds: gameSettings.rounds });
 }
 
 function skipPhase() {
@@ -482,8 +491,8 @@ function tgHandleSpinReady(d) {
   showScreen('s-game');
   showPhasePanel('p-tg-spin-ready');
   timerMax = 999;
-  document.getElementById('hdr-phase').textContent = `Turn ${d.turnNumber}/${d.totalTurns}`;
-  document.getElementById('hdr-round').textContent = 'Tag Out';
+  document.getElementById('hdr-round').textContent = `Round ${d.roundNumber}/${d.maxRounds}`;
+  document.getElementById('hdr-phase').textContent = `Turn ${d.turnInRound}/${d.playersPerRound}`;
 
   const chip = document.getElementById('tg-sr-spinner');
   chip.textContent       = `${d.spinner.name} is spinning`;

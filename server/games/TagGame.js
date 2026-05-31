@@ -74,10 +74,16 @@ class TagGame extends BaseGame {
 
   // ── Lifecycle ──────────────────────────────────────────────
 
-  start(players) {
-    this.players     = players.map(p => ({ ...p, score: 0, tags: [], immune: false }));
-    this.playerOrder = this._shuffle([...this.players]);
-    this.turnIdx     = 0;
+  start(players, options = {}) {
+    this.maxRounds = Math.max(1, options.rounds ?? 3);
+    this.players   = players.map(p => ({ ...p, score: 0, tags: [], immune: false }));
+
+    // Build full turn order: each round shuffled independently
+    this.playerOrder = [];
+    for (let r = 0; r < this.maxRounds; r++) {
+      this.playerOrder.push(...this._shuffle([...this.players]));
+    }
+    this.turnIdx = 0;
     this._beginSpinReady();
   }
 
@@ -193,24 +199,33 @@ class TagGame extends BaseGame {
 
   _beginSpinReady() {
     this.phase = 'spin_ready';
-    const spinner = this._currentPlayer();
+    const spinner     = this._currentPlayer();
+    const perRound    = this.players.length;
+    const roundNumber = Math.floor(this.turnIdx / perRound) + 1;
+    const turnInRound = (this.turnIdx % perRound) + 1;
 
     this.broadcast('host:phase', {
       phase: 'spin_ready',
-      spinner:      this._pub(spinner),
-      turnNumber:   this.turnIdx + 1,
-      totalTurns:   this.playerOrder.length,
+      spinner:       this._pub(spinner),
+      roundNumber,
+      maxRounds:     this.maxRounds,
+      turnInRound,
+      playersPerRound: perRound,
       wheelSegments: this.wheelSegments,
-      allPlayers:   this._allPub(),
+      allPlayers:    this._allPub(),
     });
 
     this.players.forEach(p => {
       this.send(p.id, 'player:phase', {
         phase: 'spin_ready',
-        role: p.id === spinner.id ? 'spinner' : 'watcher',
-        spinner: this._pub(spinner),
+        role:  p.id === spinner.id ? 'spinner' : 'watcher',
+        spinner:       this._pub(spinner),
+        roundNumber,
+        maxRounds:     this.maxRounds,
+        turnInRound,
+        playersPerRound: perRound,
         wheelSegments: this.wheelSegments,
-        allPlayers: this._allPub(),
+        allPlayers:    this._allPub(),
       });
     });
   }

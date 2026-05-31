@@ -376,6 +376,48 @@
     .big-number { font-size: 80px; font-weight: 900; }
     .highlight  { color: var(--purple); }
 
+    /* ── Settings panel ───────────────────────────────────── */
+    .settings-panel {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .settings-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 15px;
+    }
+    .settings-label { color: var(--muted); }
+    .stepper {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .stepper-btn {
+      background: var(--panel);
+      border: none;
+      color: var(--text);
+      width: 30px; height: 30px;
+      border-radius: 8px;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      line-height: 1;
+    }
+    .stepper-btn:hover { background: var(--purple); }
+    .stepper-value {
+      font-size: 22px;
+      font-weight: 900;
+      min-width: 28px;
+      text-align: center;
+      color: var(--purple);
+    }
+
     /* ── TagGame ──────────────────────────────────────────── */
     #p-tg-spin-ready, #p-tg-spinning, #p-tg-adj-result,
     #p-tg-event-result, #p-tg-event-resolve,
@@ -541,6 +583,17 @@
       <div class="join-url" id="lobby-url"></div>
     </div>
     <div id="qr-code"></div>
+    <div class="settings-panel">
+      <div class="section-title" style="margin-bottom:2px;">⚙️ Settings</div>
+      <div class="settings-row">
+        <span class="settings-label">Rounds</span>
+        <div class="stepper">
+          <button class="stepper-btn" onclick="adjustSetting('rounds',-1)">−</button>
+          <span class="stepper-value" id="setting-rounds">3</span>
+          <button class="stepper-btn" onclick="adjustSetting('rounds',+1)">+</button>
+        </div>
+      </div>
+    </div>
     <button class="btn btn-primary" id="btn-start" disabled onclick="startGame()">
       Start Game
     </button>
