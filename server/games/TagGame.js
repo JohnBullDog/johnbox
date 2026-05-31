@@ -42,7 +42,7 @@ const T_TASK_INTRO         = 6;
 const T_SKIT               = 120;
 const T_PERF_VOTE          = 20;   // seconds for performance rating
 const T_SKIT_RESULT        = 10;
-const WHEEL_SEGMENTS       = 24;
+const WHEEL_SEGMENTS       = 16;
 
 const SCORE_PER_RATING_POINT = 25;   // avg rating 1-10 → ×25 pts
 const FAILED_TAG_PENALTY     = 100;  // per failed tag
@@ -753,7 +753,7 @@ class TagGame extends BaseGame {
     const segments = [];
     let a = 0, e = 0;
     for (let i = 0; i < WHEEL_SEGMENTS; i++) {
-      if ((i + 1) % 6 === 0) {
+      if ((i + 1) % 4 === 0) {
         segments.push({ type: 'event', ...shuffledEvt[e++ % shuffledEvt.length] });
       } else {
         segments.push({ type: 'adjective', value: shuffledAdj[a++ % shuffledAdj.length] });

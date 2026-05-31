@@ -411,58 +411,112 @@ let tgWheelRotation  = 0;
 let tgMyCallouts     = {};   // { "playerId:tag": true }
 let tgAnimFrame      = null;
 
-// ── Wheel draw (shared with host.js logic, mobile-sized) ──
+// ── Wheel draw ─────────────────────────────────────────────
+// Same colour constants as host.js
+const TG_SEG_COLORS = [
+  '#1d4ed8','#15803d','#9333ea','#b45309',
+  '#0e7490','#be185d','#dc2626','#0369a1',
+];
+const TG_EVENT_COLOR = '#d97706';
+
+function tgWrapText(ctx, text, maxWidth, maxLines) {
+  const words  = text.split(' ');
+  const result = [];
+  let   line   = '';
+  for (let i = 0; i < words.length; i++) {
+    const test = line ? line + ' ' + words[i] : words[i];
+    if (ctx.measureText(test).width > maxWidth && line) {
+      result.push(line);
+      if (result.length >= maxLines) {
+        let last = result[result.length - 1];
+        while (ctx.measureText(last + '…').width > maxWidth && last.includes(' '))
+          last = last.slice(0, last.lastIndexOf(' '));
+        result[result.length - 1] = last + '…';
+        return result;
+      }
+      line = words[i];
+    } else {
+      line = test;
+    }
+  }
+  if (line) result.push(line);
+  return result.slice(0, maxLines);
+}
 
 function tgDrawWheel(canvas, segments, rotationDeg) {
-  if (!canvas || !segments) return;
-  const ctx = canvas.getContext('2d');
-  const cx  = canvas.width / 2;
-  const cy  = canvas.height / 2;
-  const r   = Math.min(cx, cy) - 4;
-  const n   = segments.length;
-  const arc = (2 * Math.PI) / n;
-  const off = (rotationDeg * Math.PI / 180) - Math.PI / 2;
+  if (!canvas || !segments?.length) return;
+  const ctx   = canvas.getContext('2d');
+  const cx    = canvas.width  / 2;
+  const cy    = canvas.height / 2;
+  const r     = Math.min(cx, cy) - 5;
+  const n     = segments.length;
+  const arc   = (2 * Math.PI) / n;
+  const off   = (rotationDeg * Math.PI / 180) - Math.PI / 2;
+  const fs    = Math.max(10, Math.min(14, r * 0.075));
+  const textR = r * 0.62;
+  const maxW  = r * 0.52;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  const adjPalette = ['#1e3a5f','#243d6e','#2a4575','#1a3560','#1d3d6a','#20406d','#22427a','#193358'];
-
   segments.forEach((seg, i) => {
-    const a0 = off + i * arc, a1 = a0 + arc;
+    const a0 = off + i * arc;
+    const a1 = a0 + arc;
+
     ctx.beginPath();
     ctx.moveTo(cx, cy);
     ctx.arc(cx, cy, r, a0, a1);
     ctx.closePath();
-    ctx.fillStyle = seg.type === 'event' ? '#6b3dcc' : adjPalette[i % adjPalette.length];
+    ctx.fillStyle = seg.type === 'event' ? TG_EVENT_COLOR : TG_SEG_COLORS[i % TG_SEG_COLORS.length];
     ctx.fill();
-    ctx.strokeStyle = '#0f0f1a';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    const mid = a0 + arc / 2;
-    const tr  = r * 0.65;
+    const mid        = a0 + arc / 2;
+    const bottomHalf = Math.sin(mid) > 0;
+    const textAngle  = bottomHalf ? mid - Math.PI / 2 : mid + Math.PI / 2;
+
     ctx.save();
-    ctx.translate(cx + Math.cos(mid) * tr, cy + Math.sin(mid) * tr);
-    ctx.rotate(mid + Math.PI / 2);
+    ctx.translate(cx + Math.cos(mid) * textR, cy + Math.sin(mid) * textR);
+    ctx.rotate(textAngle);
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'white';
-    ctx.font = 'bold 9px sans-serif';
-    const label = seg.type === 'event' ? seg.name : seg.value;
-    const maxC  = Math.floor(r / 14);
-    ctx.fillText(label.length > maxC ? label.slice(0, maxC - 1) + '…' : label, 0, 0);
+    ctx.font = `bold ${fs}px sans-serif`;
+
+    const label = seg.type === 'event' ? `${seg.icon} ${seg.name}` : seg.value;
+    const lines = tgWrapText(ctx, label, maxW, 2);
+
+    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur  = 3;
+    ctx.fillStyle   = 'white';
+    const lineH  = fs * 1.3;
+    const startY = -(lines.length - 1) * lineH / 2;
+    lines.forEach((ln, li) => ctx.fillText(ln, 0, startY + li * lineH));
+
     ctx.restore();
   });
 
+  ctx.shadowBlur = 0;
+
   ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, 2 * Math.PI);
-  ctx.strokeStyle = '#7c4dff';
-  ctx.lineWidth = 3;
+  ctx.arc(cx, cy, r + 1, 0, 2 * Math.PI);
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 2;
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.arc(cx, cy, 12, 0, 2 * Math.PI);
+  ctx.arc(cx, cy, r + 4, 0, 2 * Math.PI);
+  ctx.strokeStyle = '#7c4dff';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  const hubR = Math.max(10, r * 0.07);
+  ctx.beginPath();
+  ctx.arc(cx, cy, hubR, 0, 2 * Math.PI);
   ctx.fillStyle = '#0f0f1a';
   ctx.fill();
+  ctx.strokeStyle = '#7c4dff';
+  ctx.lineWidth = 2;
+  ctx.stroke();
 }
 
 function tgSizeAndDrawWheel(segments, rotation) {
