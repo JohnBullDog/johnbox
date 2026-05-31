@@ -5,6 +5,18 @@ const socket = io();
 // ── State ──────────────────────────────────────────────────
 let myPlayer    = null;
 const SESSION_KEY = 'jb_session';
+const DEVICE_KEY  = 'jb_device';
+
+function getDeviceId() {
+  let id = localStorage.getItem(DEVICE_KEY);
+  if (!id) {
+    id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem(DEVICE_KEY, id);
+  }
+  return id;
+}
 let timerMax    = 60;
 let drawColor   = '#1a1a1a';
 let drawSize    = 6;
@@ -37,11 +49,12 @@ function setTimerBar(pct) {
 // ── Session / reconnect ────────────────────────────────────
 
 socket.on('connect', () => {
-  // Attempt to restore session on every connect (handles both page reload and auto-reconnect)
-  const token = myPlayer?.sessionToken ?? (() => {
+  // Send both token and device ID — server tries token first, device ID as fallback.
+  // This fires on every connect (initial load, page reload, auto-reconnect).
+  const sessionToken = myPlayer?.sessionToken ?? (() => {
     try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null')?.sessionToken; } catch { return null; }
   })();
-  if (token) socket.emit('room:rejoin', { sessionToken: token });
+  socket.emit('room:rejoin', { sessionToken, deviceId: getDeviceId() });
 });
 
 socket.on('room:rejoined', ({ code, player, state }) => {
@@ -67,7 +80,7 @@ function submitJoin() {
   document.getElementById('join-err').textContent = '';
   if (!code) return setErr('join-err', 'Enter a room code.');
   if (!name) return setErr('join-err', 'Enter your name.');
-  socket.emit('room:join', { code, playerName: name });
+  socket.emit('room:join', { code, playerName: name, deviceId: getDeviceId() });
 }
 
 function setErr(id, msg) {
@@ -415,12 +428,10 @@ document.getElementById('btn-submit-drawing').addEventListener('click', () => {
 
 socket.on('error', ({ message }) => {
   if (!myPlayer) {
-    // Failed before joining (bad rejoin token, room gone, etc.)
-    // Clear stale session and drop back to join screen so the player can re-enter.
     localStorage.removeItem(SESSION_KEY);
     showScreen('s-join');
-    // Only show the error if it's actionable (not just "session expired")
-    const silent = message.toLowerCase().includes('session') || message.toLowerCase().includes('expired');
+    // Swallow "no active session" — it fires on every fresh page load and is not an error.
+    const silent = /session|expired|active/i.test(message);
     if (!silent) document.getElementById('join-err').textContent = message;
     return;
   }

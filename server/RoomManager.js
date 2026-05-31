@@ -56,6 +56,7 @@ class RoomManager {
     this.rooms = new Map();           // code → room
     this.socketToRoom = new Map();    // socketId → code
     this.sessionToCode = new Map();   // sessionToken → roomCode
+    this.deviceToRoom  = new Map();   // deviceId    → roomCode  (permanent per-device)
     this._colorIndex = 0;
   }
 
@@ -82,25 +83,15 @@ class RoomManager {
     console.log(`[room] created ${code} (${gameType})`);
   }
 
-  joinRoom(socket, { code, playerName } = {}) {
+  joinRoom(socket, { code, playerName, deviceId } = {}) {
     code = (code ?? '').toUpperCase().trim();
     const room = this.rooms.get(code);
 
-    if (!room)               return socket.emit('error', { message: 'Room not found. Check your code.' });
-    if (!playerName?.trim()) return socket.emit('error', { message: 'Enter a name to join.' });
+    if (!room)                  return socket.emit('error', { message: 'Room not found. Check your code.' });
+    if (room.state !== 'lobby') return socket.emit('error', { message: 'Game already in progress.' });
+    if (!playerName?.trim())    return socket.emit('error', { message: 'Enter a name to join.' });
 
     const name = playerName.trim().slice(0, 20);
-
-    // If the game is already running, allow rejoining by matching name (fallback when
-    // the session token is unavailable — server restart, cleared storage, etc.).
-    if (room.state !== 'lobby') {
-      const existing = [...room.players.values()].find(
-        p => p.name.toLowerCase() === name.toLowerCase()
-      );
-      if (!existing) return socket.emit('error', { message: 'Game already in progress.' });
-      return this._reconnectPlayer(socket, existing, room, code);
-    }
-
     const taken = [...room.players.values()].some(p => p.name.toLowerCase() === name.toLowerCase());
     if (taken) return socket.emit('error', { message: `"${name}" is already taken.` });
 
@@ -111,11 +102,13 @@ class RoomManager {
       score: 0,
       color: PLAYER_COLORS[this._colorIndex++ % PLAYER_COLORS.length],
       sessionToken,
+      deviceId: deviceId || null,
     };
 
     room.players.set(socket.id, player);
     this.socketToRoom.set(socket.id, code);
     this.sessionToCode.set(sessionToken, code);
+    if (deviceId) this.deviceToRoom.set(deviceId, code);
     socket.join(this._chan(code));
 
     socket.emit('room:joined', { code, player });
@@ -164,7 +157,10 @@ class RoomManager {
 
     if (socket.id === room.hostId) {
       // Clean up all player sessions then close the room
-      for (const p of room.players.values()) this.sessionToCode.delete(p.sessionToken);
+      for (const p of room.players.values()) {
+        this.sessionToCode.delete(p.sessionToken);
+        if (p.deviceId) this.deviceToRoom.delete(p.deviceId);
+      }
       if (room.game) room.game.destroy();
       this.io.to(this._chan(code)).emit('room:closed', { message: 'The host disconnected.' });
       this.rooms.delete(code);
@@ -177,23 +173,35 @@ class RoomManager {
     }
   }
 
-  rejoinRoom(socket, { sessionToken } = {}) {
-    const code = this.sessionToCode.get(sessionToken);
-    if (!code) return socket.emit('error', { message: 'Session expired. Please rejoin.' });
-
-    const room = this.rooms.get(code);
-    if (!room) {
-      this.sessionToCode.delete(sessionToken);
-      return socket.emit('error', { message: 'Room no longer exists.' });
+  rejoinRoom(socket, { sessionToken, deviceId } = {}) {
+    // Priority 1: session token (issued each join, most specific)
+    if (sessionToken) {
+      const code = this.sessionToCode.get(sessionToken);
+      if (code) {
+        const room = this.rooms.get(code);
+        if (room) {
+          const player = [...room.players.values()].find(p => p.sessionToken === sessionToken);
+          if (player) return this._reconnectPlayer(socket, player, room, code);
+        }
+        this.sessionToCode.delete(sessionToken);
+      }
     }
 
-    let player = null;
-    for (const p of room.players.values()) {
-      if (p.sessionToken === sessionToken) { player = p; break; }
+    // Priority 2: permanent device ID (survives token loss, server restarts excluded)
+    if (deviceId) {
+      const code = this.deviceToRoom.get(deviceId);
+      if (code) {
+        const room = this.rooms.get(code);
+        if (room) {
+          const player = [...room.players.values()].find(p => p.deviceId === deviceId);
+          if (player) return this._reconnectPlayer(socket, player, room, code);
+        }
+        this.deviceToRoom.delete(deviceId);
+      }
     }
-    if (!player) return socket.emit('error', { message: 'Session expired. Please rejoin.' });
 
-    this._reconnectPlayer(socket, player, room, code);
+    // Nothing found — client will show the join form
+    socket.emit('error', { message: 'No active session.' });
   }
 
   // Shared reconnect path used by both rejoinRoom (token) and joinRoom (name fallback).
@@ -217,6 +225,9 @@ class RoomManager {
     const newToken = crypto.randomUUID();
     player.sessionToken = newToken;
     this.sessionToCode.set(newToken, code);
+
+    // Keep device → room mapping current.
+    if (player.deviceId) this.deviceToRoom.set(player.deviceId, code);
 
     this.socketToRoom.set(newSocketId, code);
     socket.join(this._chan(code));
