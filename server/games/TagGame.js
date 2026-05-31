@@ -166,7 +166,7 @@ class TagGame extends BaseGame {
         const isPerformer = this.currentPerformers.some(p => p.id === player.id);
         if (!isPerformer) break;
         this.clearTimer();
-        this._beginPerfVote();
+        this._endSkit();
         break;
       }
 
