@@ -616,6 +616,7 @@ function tgHandleSpinReady(d) {
 
   if (d.role === 'spinner') {
     showScreen('s-tg-spin');
+    document.getElementById('tg-btn-spin').disabled = false;
     tgSizeAndDrawWheel(d.wheelSegments, tgWheelRotation);
     tgRenderMyTags('tg-spin-my-tags', myPlayer?.id, d.allPlayers);
     document.querySelector('#s-tg-spin p').textContent = roundLabel + ' · Your turn!';
