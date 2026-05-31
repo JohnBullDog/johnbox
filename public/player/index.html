@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>JohnBox Controller</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:     #0f0f1a;
+      --panel:  #1a1a2e;
+      --card:   #16213e;
+      --purple: #7c4dff;
+      --coral:  #ff6b6b;
+      --teal:   #4ecdc4;
+      --text:   #f0f0f0;
+      --muted:  #8888aa;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .screen {
+      display: none;
+      position: fixed; inset: 0;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      gap: 16px;
+    }
+    .screen.active { display: flex; }
+
+    /* ── Timer bar (top of every active screen) ─── */
+    .timer-bar {
+      position: fixed; top: 0; left: 0; right: 0;
+      height: 5px;
+      background: var(--card);
+      z-index: 100;
+    }
+    .timer-bar-fill {
+      height: 100%;
+      background: var(--coral);
+      transition: width 1s linear;
+    }
+
+    /* ── Common components ─────────────────────── */
+    .logo {
+      font-size: 32px;
+      font-weight: 900;
+      letter-spacing: -1px;
+    }
+    .logo span { color: var(--purple); }
+
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 20px;
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    input[type=text], textarea {
+      width: 100%;
+      background: #0f0f1a;
+      border: 2px solid var(--card);
+      border-radius: 12px;
+      padding: 14px 16px;
+      color: var(--text);
+      font-size: 18px;
+      outline: none;
+      font-family: inherit;
+    }
+    input[type=text]:focus, textarea:focus { border-color: var(--purple); }
+    textarea { resize: none; height: 80px; }
+
+    .btn {
+      width: 100%;
+      max-width: 420px;
+      padding: 16px;
+      border: none;
+      border-radius: 14px;
+      font-size: 18px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      transition: transform .1s, opacity .15s;
+    }
+    .btn:active { transform: scale(.97); }
+    .btn-primary   { background: var(--purple); color: white; }
+    .btn-secondary { background: var(--card); color: var(--text); }
+    .btn-teal      { background: var(--teal); color: #000; }
+    .btn:disabled  { opacity: .4; cursor: default; }
+
+    .err-msg {
+      color: var(--coral);
+      font-size: 14px;
+      text-align: center;
+      min-height: 20px;
+    }
+
+    /* ── Join ──────────────────────────────────── */
+    #s-join { gap: 12px; }
+    #s-join .card { display: flex; flex-direction: column; gap: 12px; }
+    #s-join input { text-transform: uppercase; letter-spacing: 4px; text-align: center; font-size: 22px; }
+    #s-join input::placeholder { text-transform: none; letter-spacing: normal; font-size: 16px; text-align: center; }
+
+    /* ── Lobby ─────────────────────────────────── */
+    #s-lobby { text-align: center; gap: 12px; }
+    .room-badge {
+      background: var(--purple);
+      border-radius: 12px;
+      padding: 12px 32px;
+      font-size: 40px;
+      font-weight: 900;
+      letter-spacing: 8px;
+    }
+    .player-name-badge {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 10px 20px;
+      font-size: 20px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .player-avatar {
+      width: 20px; height: 20px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ── Round intro (player) ───────────────────── */
+    #s-round-intro { text-align: center; }
+    .big-round-num { font-size: 96px; font-weight: 900; line-height: 1; color: var(--purple); }
+    .round-sub { font-size: 20px; color: var(--muted); }
+    .drawer-label { font-size: 22px; font-weight: 700; margin-top: 12px; }
+
+    /* ── Drawing ───────────────────────────────── */
+    #s-drawing {
+      padding: 0;
+      align-items: stretch;        /* override 'center' inherited from .screen */
+      justify-content: flex-start;
+      gap: 0;
+    }
+    .prompt-banner {
+      background: var(--panel);
+      padding: 12px 20px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .prompt-word {
+      font-size: 28px;
+      font-weight: 900;
+      color: var(--teal);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    .canvas-wrapper {
+      flex: 1;
+      position: relative;
+      background: white;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #draw-canvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      cursor: crosshair;
+      touch-action: none;
+    }
+    .tools-bar {
+      background: var(--panel);
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+      overflow-x: auto;
+    }
+    .color-swatch {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      border: 3px solid transparent;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: transform .1s;
+    }
+    .color-swatch.active { border-color: white; transform: scale(1.2); }
+    .color-swatch:active  { transform: scale(.9); }
+    .size-btn {
+      background: var(--card);
+      border: none;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 4px 10px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .size-btn.active { background: var(--purple); }
+    .tools-sep { flex: 1; }
+    .tool-btn {
+      background: var(--card);
+      border: none;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .submit-bar {
+      background: var(--bg);
+      padding: 10px 12px;
+      flex-shrink: 0;
+    }
+
+    /* ── Text input ─────────────────────────────── */
+    #s-text { gap: 16px; }
+    #s-text h2 { font-size: 24px; font-weight: 800; text-align: center; }
+    #s-text p  { color: var(--muted); font-size: 15px; text-align: center; }
+
+    /* ── Select ─────────────────────────────────── */
+    #s-select { gap: 14px; align-items: stretch; }
+    #s-select h2 { font-size: 22px; font-weight: 800; text-align: center; }
+    .options-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      width: 100%;
+      max-width: 420px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .option-btn {
+      width: 100%;
+      padding: 18px 20px;
+      border: 2px solid var(--card);
+      border-radius: 14px;
+      background: var(--card);
+      color: var(--text);
+      font-size: 17px;
+      font-weight: 600;
+      text-align: left;
+      cursor: pointer;
+      font-family: inherit;
+      transition: border-color .15s, background .15s, transform .1s;
+    }
+    .option-btn:active   { transform: scale(.98); }
+    .option-btn:hover    { border-color: var(--purple); }
+    .option-btn.selected { background: var(--purple); border-color: var(--purple); }
+    .option-btn.is-mine  { border-color: var(--muted); opacity: .6; cursor: default; }
+    .option-btn.disabled { opacity: .5; cursor: default; }
+
+    /* ── Waiting ─────────────────────────────────── */
+    #s-waiting { text-align: center; gap: 16px; }
+    .waiting-icon { font-size: 64px; animation: pulse 2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+    .waiting-title { font-size: 24px; font-weight: 800; }
+    .waiting-sub   { font-size: 16px; color: var(--muted); }
+    .submitted-answer {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 14px 20px;
+      font-size: 18px;
+      font-style: italic;
+      max-width: 360px;
+      text-align: center;
+    }
+
+    /* ── Results ─────────────────────────────────── */
+    #s-results { gap: 14px; text-align: center; }
+    .delta-badge {
+      font-size: 48px;
+      font-weight: 900;
+      color: var(--teal);
+    }
+    .delta-badge.zero { color: var(--muted); }
+    .result-msg { font-size: 20px; font-weight: 700; }
+    .score-display { color: var(--muted); font-size: 16px; }
+
+    /* ── Game over ───────────────────────────────── */
+    #s-gameover { text-align: center; gap: 16px; }
+    #s-gameover h1 { font-size: 48px; font-weight: 900; }
+    .my-rank-badge {
+      font-size: 80px;
+      font-weight: 900;
+    }
+    .final-player-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+      max-width: 380px;
+    }
+    .final-player-row {
+      background: var(--card);
+      border-radius: 10px;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 16px;
+    }
+    .fp-rank { font-weight: 900; width: 28px; }
+    .fp-name { flex: 1; font-weight: 600; }
+    .fp-score { font-weight: 700; color: var(--teal); }
+    .fp-me { border: 2px solid var(--purple); }
+  </style>
+</head>
+<body>
+
+<div class="timer-bar"><div class="timer-bar-fill" id="timer-fill" style="width:100%"></div></div>
+
+<!-- ── Join ──────────────────────────────────────────── -->
+<div id="s-join" class="screen active">
+  <div class="logo">John<span>Box</span></div>
+  <div class="card">
+    <div class="label">Room Code</div>
+    <input type="text" id="input-code" placeholder="ABCD" maxlength="4" autocomplete="off" spellcheck="false">
+    <div class="label">Your Name</div>
+    <input type="text" id="input-name" placeholder="Enter your name" maxlength="20" autocomplete="off">
+    <button class="btn btn-primary" id="btn-join">Join Game</button>
+  </div>
+  <div class="err-msg" id="join-err"></div>
+</div>
+
+<!-- ── Lobby ──────────────────────────────────────────── -->
+<div id="s-lobby" class="screen">
+  <div class="logo">John<span>Box</span></div>
+  <div class="room-badge" id="lobby-code-display">----</div>
+  <div class="player-name-badge">
+    <div class="player-avatar" id="lobby-avatar"></div>
+    <span id="lobby-name"></span>
+  </div>
+  <p style="color:var(--muted);font-size:15px;" id="lobby-player-count">Waiting for players…</p>
+  <p style="color:var(--muted);font-size:13px;">Waiting for host to start…</p>
+</div>
+
+<!-- ── Round intro ────────────────────────────────────── -->
+<div id="s-round-intro" class="screen">
+  <div class="round-sub">Round</div>
+  <div class="big-round-num" id="ri-round-num">1</div>
+  <div class="round-sub">of <span id="ri-max-rounds">3</span></div>
+  <div class="drawer-label" id="ri-drawer-label"></div>
+</div>
+
+<!-- ── Drawing canvas (drawer only) ──────────────────── -->
+<div id="s-drawing" class="screen">
+  <div class="prompt-banner">
+    <div style="font-size:12px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;">Draw this</div>
+    <div class="prompt-word" id="draw-prompt-word">word</div>
+  </div>
+  <div class="canvas-wrapper">
+    <canvas id="draw-canvas"></canvas>
+  </div>
+  <div class="tools-bar">
+    <button class="color-swatch active" style="background:#1a1a1a" data-color="#1a1a1a"></button>
+    <button class="color-swatch" style="background:#e63946" data-color="#e63946"></button>
+    <button class="color-swatch" style="background:#2196F3" data-color="#2196F3"></button>
+    <button class="color-swatch" style="background:#4CAF50" data-color="#4CAF50"></button>
+    <button class="color-swatch" style="background:#FF9800" data-color="#FF9800"></button>
+    <button class="color-swatch" style="background:#9C27B0" data-color="#9C27B0"></button>
+    <button class="color-swatch" style="background:#ffffff;border:2px solid #555" data-color="#ffffff" title="Eraser"></button>
+    <div class="tools-sep"></div>
+    <button class="size-btn" data-size="3">S</button>
+    <button class="size-btn active" data-size="6">M</button>
+    <button class="size-btn" data-size="14">L</button>
+    <button class="tool-btn" id="btn-clear">🗑 Clear</button>
+  </div>
+  <div class="submit-bar">
+    <button class="btn btn-teal" id="btn-submit-drawing">Done Drawing ✓</button>
+  </div>
+</div>
+
+<!-- ── Text input (guessers) ──────────────────────────── -->
+<div id="s-text" class="screen">
+  <h2>What is it?</h2>
+  <p>Type what you think they drew</p>
+  <textarea id="text-input" placeholder="Your answer…" maxlength="100"></textarea>
+  <button class="btn btn-primary" id="btn-submit-text">Submit Answer</button>
+  <div class="err-msg" id="text-err"></div>
+</div>
+
+<!-- ── Select options (voting) ────────────────────────── -->
+<div id="s-select" class="screen">
+  <h2>What was it?</h2>
+  <p style="color:var(--muted);font-size:14px;" id="select-sub">Pick the real answer</p>
+  <div class="options-grid" id="options-grid"></div>
+</div>
+
+<!-- ── Waiting screen ────────────────────────────────── -->
+<div id="s-waiting" class="screen">
+  <div class="waiting-icon" id="waiting-icon">⏳</div>
+  <div class="waiting-title" id="waiting-title">Waiting…</div>
+  <div class="waiting-sub" id="waiting-sub"></div>
+  <div class="submitted-answer" id="waiting-answer" style="display:none"></div>
+</div>
+
+<!-- ── Round results ──────────────────────────────────── -->
+<div id="s-results" class="screen">
+  <div class="delta-badge" id="results-delta">+0</div>
+  <div class="result-msg" id="results-msg">Round over!</div>
+  <div class="score-display" id="results-score"></div>
+  <div class="card" id="results-breakdown" style="text-align:left;max-width:420px;width:100%;font-size:14px;color:var(--muted);"></div>
+</div>
+
+<!-- ── Game over ──────────────────────────────────────── -->
+<div id="s-gameover" class="screen">
+  <h1>Game Over!</h1>
+  <div class="my-rank-badge" id="go-rank-badge">🏆</div>
+  <div class="final-player-list" id="go-player-list"></div>
+  <button class="btn btn-primary" style="max-width:300px;margin-top:8px;" onclick="location.reload()">
+    Play Again
+  </button>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/player/player.js"></script>
+</body>
+</html>
