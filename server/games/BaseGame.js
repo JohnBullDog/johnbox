@@ -69,16 +69,23 @@ class BaseGame {
   // Re-send the last player:phase to a reconnecting player.
   // Stamps the current server-side timeLeft so the player's timer is accurate.
   syncPlayer(player) {
-    if (!player._lastPhase) return;
+    // game.players are shallow copies (created in start()); _lastPhase lives there.
+    // Look up by ID to get the copy that actually has _lastPhase set.
+    const gamePlayer = this.players.find(p => p.id === player.id) ?? player;
+    if (!gamePlayer._lastPhase) return;
     const phase = this.timeLeft > 0
-      ? { ...player._lastPhase, timeLeft: this.timeLeft }
-      : player._lastPhase;
+      ? { ...gamePlayer._lastPhase, timeLeft: this.timeLeft }
+      : gamePlayer._lastPhase;
     this.send(player.id, 'player:phase', phase);
   }
 
   // Remap player-ID keyed state after a reconnect changes the socket ID.
-  // Subclasses override this when they keep Maps/Sets keyed by player ID.
-  updatePlayerId(oldId, newId) {}
+  // Base implementation updates the game's own player list; subclasses call
+  // super() then remap any Maps/Sets they keep keyed by player ID.
+  updatePlayerId(oldId, newId) {
+    const p = this.players.find(pl => pl.id === oldId);
+    if (p) p.id = newId;
+  }
 
   // Stop all retry timers — call when the room is destroyed.
   destroy() {

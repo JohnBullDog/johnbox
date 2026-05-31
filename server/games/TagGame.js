@@ -762,6 +762,7 @@ class TagGame extends BaseGame {
   }
 
   updatePlayerId(oldId, newId) {
+    super.updatePlayerId(oldId, newId);
     _transferMapKey(this.audienceVotes, oldId, newId);
     _transferMapKey(this.performanceVotes, oldId, newId);
 

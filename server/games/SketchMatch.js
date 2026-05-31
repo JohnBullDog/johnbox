@@ -331,6 +331,7 @@ class SketchMatch extends BaseGame {
   }
 
   updatePlayerId(oldId, newId) {
+    super.updatePlayerId(oldId, newId);
     _transferMapKey(this.guesses, oldId, newId);
     _transferMapKey(this.votes, oldId, newId);
   }
