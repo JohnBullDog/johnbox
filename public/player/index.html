@@ -629,6 +629,187 @@
   <div style="color:var(--muted);font-size:15px;" id="tg-sr-score"></div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- GSLS player screens                                    -->
+<!-- ═══════════════════════════════════════════════════════ -->
+
+<!-- Turn setup / role announcement -->
+<div id="s-gsls-setup" class="screen" style="text-align:center;gap:16px;">
+  <div style="font-size:40px;">🎙️</div>
+  <div style="font-size:22px;font-weight:900;" id="gsls-setup-title">Next Turn</div>
+  <div style="font-size:16px;color:var(--muted);" id="gsls-setup-role-desc"></div>
+  <div style="background:var(--card);border-radius:12px;padding:16px 20px;width:100%;max-width:360px;" id="gsls-setup-detail"></div>
+</div>
+
+<!-- Speaker: prep screen -->
+<div id="s-gsls-speaker-prep" class="screen" style="gap:14px;overflow-y:auto;">
+  <div style="font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;">Your Prompt — memorise it, then speak</div>
+  <div id="gsls-sp-prompt" style="background:var(--card);border-left:4px solid var(--teal);padding:16px;border-radius:10px;font-size:16px;font-weight:600;line-height:1.6;"></div>
+  <div style="font-size:12px;font-weight:700;color:var(--coral);text-transform:uppercase;margin-top:4px;">⚠️ Part 1 Forbidden Words</div>
+  <div id="gsls-sp-forbidden" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+  <div style="font-size:12px;color:var(--muted);margin-top:8px;">Aide is preparing hints. Napkins will appear here.</div>
+  <div style="font-size:22px;font-weight:900;color:var(--teal);text-align:center;" id="gsls-sp-timer">—</div>
+</div>
+
+<!-- Speaker: active speech (part 1 + part 2) -->
+<div id="s-gsls-speaker-active" class="screen" style="gap:14px;overflow-y:auto;">
+  <div id="gsls-sa-forbidden-banner" style="background:#3a1a1a;border:1px solid var(--coral);border-radius:8px;padding:10px 14px;font-size:13px;font-weight:700;color:var(--coral);"></div>
+  <div id="gsls-sa-prompt" style="background:var(--card);border-left:4px solid var(--teal);padding:14px;border-radius:10px;font-size:15px;font-weight:600;line-height:1.5;"></div>
+  <div style="font-size:22px;font-weight:900;color:var(--teal);text-align:center;" id="gsls-sa-timer">—</div>
+  <!-- Received napkins -->
+  <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;" id="gsls-napkin-label" style="display:none;">📜 Napkins from your Aide</div>
+  <div id="gsls-napkins" style="display:flex;flex-direction:column;gap:10px;overflow-y:auto;"></div>
+</div>
+
+<!-- Speaker: heckle wait -->
+<div id="s-gsls-speaker-heckle-wait" class="screen" style="text-align:center;gap:16px;">
+  <div style="font-size:48px;">😤</div>
+  <div style="font-size:20px;font-weight:900;">Audience is writing questions…</div>
+  <div style="color:var(--muted);">Get ready to respond to at least one</div>
+</div>
+
+<!-- Speaker: challenge (respond to heckles) -->
+<div id="s-gsls-speaker-challenge" class="screen" style="gap:14px;overflow-y:auto;">
+  <div style="font-size:18px;font-weight:900;">😤 Respond to a Heckle</div>
+  <div id="gsls-sc-prompt" style="background:var(--card);border-left:4px solid var(--teal);padding:12px;border-radius:8px;font-size:14px;font-weight:600;line-height:1.5;"></div>
+  <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;">Questions</div>
+  <div id="gsls-sc-heckles" style="display:flex;flex-direction:column;gap:8px;"></div>
+  <div id="gsls-sc-napkins" style="display:flex;flex-direction:column;gap:8px;"></div>
+  <div style="font-size:22px;font-weight:900;color:var(--teal);text-align:center;" id="gsls-sc-timer">—</div>
+</div>
+
+<!-- Aide: active screen -->
+<div id="s-gsls-aide" class="screen" style="gap:10px;overflow-y:auto;">
+  <div style="font-size:14px;font-weight:900;color:var(--teal);">✏️ You are the Aide</div>
+  <div style="display:flex;gap:8px;flex-direction:column;">
+    <div>
+      <div style="font-size:10px;color:var(--teal);font-weight:700;text-transform:uppercase;margin-bottom:3px;">True Topic</div>
+      <div id="gsls-aide-true" style="background:#1a2a1a;border-left:3px solid var(--teal);padding:10px;border-radius:6px;font-size:13px;font-weight:600;line-height:1.4;"></div>
+    </div>
+    <div>
+      <div style="font-size:10px;color:var(--coral);font-weight:700;text-transform:uppercase;margin-bottom:3px;">Decoy Topic</div>
+      <div id="gsls-aide-decoy" style="background:#2a1a1a;border-left:3px solid var(--coral);padding:10px;border-radius:6px;font-size:13px;font-weight:600;line-height:1.4;"></div>
+    </div>
+  </div>
+  <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;">Speaker: <span id="gsls-aide-speaker-name" style="color:var(--text)"></span></div>
+  <!-- Canvas -->
+  <canvas id="gsls-aide-draw-canvas" style="border-radius:10px;background:white;touch-action:none;width:100%;max-height:200px;display:block;"></canvas>
+  <!-- Aide tools -->
+  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+    <button class="color-swatch active" data-color="#1a1a1a" style="background:#1a1a1a;"></button>
+    <button class="color-swatch" data-color="#e63946" style="background:#e63946;"></button>
+    <button class="color-swatch" data-color="#2d9cdb" style="background:#2d9cdb;"></button>
+    <button class="color-swatch" data-color="#2dc653" style="background:#2dc653;"></button>
+    <button class="color-swatch" data-color="#ffffff" style="background:#ffffff;border:1px solid #555;"></button>
+    <button class="btn" style="font-size:11px;padding:5px 10px;" id="gsls-aide-clear">Clear</button>
+  </div>
+  <div style="display:flex;gap:8px;">
+    <button class="btn btn-primary" style="flex:1;font-size:15px;padding:14px;" id="gsls-aide-send">📜 Pass Napkin</button>
+    <div style="font-size:13px;font-weight:700;color:var(--muted);align-self:center;" id="gsls-aide-napkin-count">0 sent</div>
+  </div>
+</div>
+
+<!-- Audience: reaction screen (cheer/boo during speech) -->
+<div id="s-gsls-audience" class="screen" style="gap:14px;text-align:center;">
+  <div style="font-size:13px;font-weight:700;color:var(--muted);">True Topic</div>
+  <div id="gsls-aud-topic" style="background:var(--card);border-left:4px solid var(--teal);padding:12px 16px;border-radius:8px;font-size:14px;font-weight:600;line-height:1.5;text-align:left;"></div>
+  <div style="font-size:13px;color:var(--muted);" id="gsls-aud-phase-label">Give your reaction</div>
+  <div style="display:flex;gap:16px;justify-content:center;margin-top:8px;">
+    <button id="gsls-btn-cheer" style="font-size:48px;background:none;border:none;cursor:pointer;transition:transform 0.1s;" onclick="gslsReact('cheer')">👏</button>
+    <button id="gsls-btn-boo"   style="font-size:48px;background:none;border:none;cursor:pointer;transition:transform 0.1s;" onclick="gslsReact('boo')">👎</button>
+  </div>
+  <div style="font-size:13px;color:var(--muted);" id="gsls-aud-my-net">Your reaction: 0</div>
+</div>
+
+<!-- Audience: heckle input -->
+<div id="s-gsls-heckle" class="screen" style="gap:14px;">
+  <div style="font-size:20px;font-weight:900;">😤 Write a Heckle</div>
+  <div style="color:var(--muted);font-size:14px;">One pointed question for the speaker. Make it hard to answer without using the forbidden words.</div>
+  <textarea id="gsls-heckle-input" maxlength="80" rows="3" style="background:var(--card);color:var(--text);border:1px solid #3a3a4a;border-radius:8px;padding:12px;font-size:15px;resize:none;width:100%;box-sizing:border-box;" placeholder="e.g. But what about the tomato?"></textarea>
+  <button class="btn btn-primary" style="width:100%;padding:14px;font-size:16px;" onclick="gslsSubmitHeckle()">Submit Question</button>
+  <div style="color:var(--muted);font-size:13px;" id="gsls-heckle-err"></div>
+</div>
+
+<!-- Audience: heckle submitted waiting -->
+<div id="s-gsls-heckle-wait" class="screen" style="text-align:center;gap:14px;">
+  <div style="font-size:40px;">✅</div>
+  <div style="font-size:18px;font-weight:700;">Question submitted!</div>
+  <div style="color:var(--muted);" id="gsls-heckle-wait-text">Waiting for speaker's response…</div>
+</div>
+
+<!-- Audience: vote true/decoy -->
+<div id="s-gsls-vote" class="screen" style="gap:16px;text-align:center;">
+  <div style="font-size:20px;font-weight:900;">🗳️ What did they have?</div>
+  <div style="color:var(--muted);font-size:14px;" id="gsls-vote-speaker-name"></div>
+  <div style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:360px;">
+    <button class="btn btn-primary" style="padding:18px;font-size:17px;font-weight:900;" onclick="gslsCastVote('true')">🎯 True Prompt</button>
+    <button class="btn" style="padding:18px;font-size:17px;font-weight:900;background:var(--coral);" onclick="gslsCastVote('decoy')">🎭 Decoy Prompt</button>
+  </div>
+</div>
+
+<!-- Audience: voted waiting -->
+<div id="s-gsls-voted" class="screen" style="text-align:center;gap:14px;">
+  <div style="font-size:40px;">✅</div>
+  <div style="font-size:18px;font-weight:700;">Vote cast!</div>
+  <div style="color:var(--muted);">Waiting for everyone…</div>
+</div>
+
+<!-- Reveal screen (all roles) -->
+<div id="s-gsls-reveal" class="screen" style="gap:14px;overflow-y:auto;">
+  <div style="font-size:22px;font-weight:900;text-align:center;" id="gsls-rev-headline"></div>
+  <div style="display:flex;gap:10px;flex-direction:column;">
+    <div id="gsls-rev-true-box" style="background:#1a3a2a;border-left:4px solid var(--teal);padding:12px;border-radius:8px;">
+      <div style="font-size:10px;color:var(--teal);font-weight:700;margin-bottom:3px;">TRUE TOPIC</div>
+      <div id="gsls-rev-true-text" style="font-size:14px;font-weight:600;"></div>
+    </div>
+    <div id="gsls-rev-decoy-box" style="background:#3a1a1a;border-left:4px solid var(--coral);padding:12px;border-radius:8px;">
+      <div style="font-size:10px;color:var(--coral);font-weight:700;margin-bottom:3px;">DECOY TOPIC</div>
+      <div id="gsls-rev-decoy-text" style="font-size:14px;font-weight:600;"></div>
+    </div>
+  </div>
+  <div id="gsls-rev-result" style="background:var(--card);border-radius:10px;padding:14px;text-align:center;font-size:16px;font-weight:700;"></div>
+  <div id="gsls-rev-my-score" style="text-align:center;font-size:18px;font-weight:900;color:var(--teal);"></div>
+</div>
+
+<!-- Last Stand: debater screen -->
+<div id="s-gsls-debater" class="screen" style="gap:14px;overflow-y:auto;">
+  <div style="text-align:center;font-size:36px;font-weight:900;">⚔️ LAST STAND</div>
+  <div style="font-size:14px;font-weight:700;color:var(--coral);">You are a debater!</div>
+  <div id="gsls-deb-prompt" style="background:var(--card);border-left:4px solid var(--teal);padding:14px;border-radius:10px;font-size:15px;font-weight:600;line-height:1.5;"></div>
+  <div style="font-size:11px;color:var(--coral);font-weight:700;text-transform:uppercase;margin-top:4px;">Combined Forbidden Words</div>
+  <div id="gsls-deb-forbidden" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+  <div style="color:var(--muted);font-size:13px;" id="gsls-deb-sub">Debate starts soon…</div>
+  <div style="font-size:22px;font-weight:900;color:var(--teal);text-align:center;" id="gsls-deb-timer">—</div>
+</div>
+
+<!-- Last Stand: audience watch screen -->
+<div id="s-gsls-ls-watch" class="screen" style="gap:14px;text-align:center;">
+  <div style="font-size:32px;font-weight:900;">⚔️ Last Stand Debate</div>
+  <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;" id="gsls-ls-debaters-display"></div>
+  <div style="color:var(--muted);font-size:14px;">Watch the screen. They're arguing about two completely different things.</div>
+  <div style="font-size:22px;font-weight:900;color:var(--teal);" id="gsls-ls-timer">—</div>
+</div>
+
+<!-- Last Stand: vote winner -->
+<div id="s-gsls-ls-vote" class="screen" style="gap:16px;text-align:center;">
+  <div style="font-size:20px;font-weight:900;">🗳️ Who won the debate?</div>
+  <div style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:360px;" id="gsls-ls-vote-btns"></div>
+</div>
+
+<!-- Last Stand: voted waiting -->
+<div id="s-gsls-ls-voted" class="screen" style="text-align:center;gap:14px;">
+  <div style="font-size:40px;">✅</div>
+  <div style="font-size:18px;font-weight:700;" id="gsls-ls-voted-msg">Vote cast!</div>
+  <div style="color:var(--muted);">Reveal coming up…</div>
+</div>
+
+<!-- Last Stand: reveal -->
+<div id="s-gsls-ls-reveal" class="screen" style="gap:14px;overflow-y:auto;">
+  <div style="font-size:22px;font-weight:900;text-align:center;" id="gsls-ls-rev-winner"></div>
+  <div style="display:flex;gap:10px;flex-direction:column;" id="gsls-ls-rev-prompts"></div>
+  <div id="gsls-ls-rev-my-score" style="text-align:center;font-size:18px;font-weight:900;color:var(--teal);"></div>
+</div>
+
 <script src="/socket.io/socket.io.js"></script>
 <script src="/player/player.js"></script>
 </body>

@@ -1,0 +1,230 @@
+[
+  {
+    "id": "italian_revolt",
+    "text": "Rally the Italian restaurant staff to revolt — there is no cheese on the pizzas (it is under the sauce) and the customers have been deceived for years",
+    "forbidden": ["pizza", "restaurant", "cheese", "Italian", "sauce", "revolt", "staff", "toppings", "menu", "kitchen"],
+    "confusable": ["french_revolution", "labor_strike", "burger_grievance", "cheese_conspiracy", "class_president", "parking_dispute"]
+  },
+  {
+    "id": "french_revolution",
+    "text": "Rouse the people of Paris to storm the Bastille and tear down the monarchy once and for all",
+    "forbidden": ["France", "French", "Bastille", "revolution", "king", "Paris", "prison", "Louis", "royalty", "guillotine"],
+    "confusable": ["italian_revolt", "labor_strike", "thermopylae", "refuse_to_surrender", "class_president", "book_club_coup"]
+  },
+  {
+    "id": "labor_strike",
+    "text": "Lead the factory workers out on strike — management has cut the coffee breaks and nobody is leaving until they are reinstated",
+    "forbidden": ["factory", "strike", "workers", "management", "union", "wages", "coffee", "breaks", "picket", "negotiate"],
+    "confusable": ["french_revolution", "italian_revolt", "office_temperature", "open_plan_office", "parking_dispute", "chess_championship"]
+  },
+  {
+    "id": "pub_quiz_loss",
+    "text": "Motivate your pub quiz team after coming dead last for the third week running — tonight everything changes",
+    "forbidden": ["pub", "quiz", "questions", "answers", "team", "points", "round", "trivia", "host", "score"],
+    "confusable": ["football_halftime", "chess_championship", "spelling_bee_collapse", "project_deadline", "thermopylae", "monopoly_scandal"]
+  },
+  {
+    "id": "napoleon_moscow",
+    "text": "Convince Napoleon's exhausted army not to retreat from Moscow — turning back now would mean all of this was for nothing",
+    "forbidden": ["Napoleon", "Russia", "Russian", "Moscow", "retreat", "army", "winter", "French", "campaign", "soldiers"],
+    "confusable": ["team_camping", "antarctic_expedition", "ski_trip_disaster", "office_temperature", "project_deadline", "refuse_to_surrender"]
+  },
+  {
+    "id": "team_camping",
+    "text": "Persuade your friends to push through the camping trip despite the tent flooding, the food getting eaten by something, and nobody sleeping",
+    "forbidden": ["camping", "tent", "rain", "fire", "outdoors", "campsite", "sleeping", "nature", "woods", "wildlife"],
+    "confusable": ["napoleon_moscow", "antarctic_expedition", "ski_trip_disaster", "rollercoaster_intervention", "midnight_breakdown", "internet_emergency"]
+  },
+  {
+    "id": "antarctic_expedition",
+    "text": "Rally your crew to press on to the South Pole — supplies are running low, two men have frostbite, but you are seventy miles from history",
+    "forbidden": ["Antarctica", "South Pole", "expedition", "ice", "snow", "frostbite", "explorer", "supplies", "crew", "base camp"],
+    "confusable": ["napoleon_moscow", "team_camping", "ski_trip_disaster", "refuse_to_surrender", "project_deadline", "office_temperature"]
+  },
+  {
+    "id": "ski_trip_disaster",
+    "text": "Convince the ski group to get back on the slopes after a spectacular wipeout that was witnessed by the entire mountain",
+    "forbidden": ["ski", "snow", "slope", "mountain", "wipeout", "chairlift", "resort", "lodge", "helmet", "poles"],
+    "confusable": ["napoleon_moscow", "antarctic_expedition", "team_camping", "rollercoaster_intervention", "football_halftime", "gym_motivation"]
+  },
+  {
+    "id": "office_fridge",
+    "text": "Demand justice at the all-hands meeting — someone has been stealing lunches from the communal fridge for six months and it must stop today",
+    "forbidden": ["fridge", "lunch", "food", "stolen", "kitchen", "container", "eat", "leftovers", "theft", "colleague"],
+    "confusable": ["italian_revolt", "labor_strike", "burger_grievance", "cheese_conspiracy", "open_plan_office", "parking_dispute"]
+  },
+  {
+    "id": "cheese_conspiracy",
+    "text": "Argue that the Great Dairy Shortage of 1947 was deliberately engineered by the government to control the population through rationing",
+    "forbidden": ["cheese", "dairy", "shortage", "government", "conspiracy", "ration", "farmers", "supply", "cheddar", "milk"],
+    "confusable": ["italian_revolt", "office_fridge", "moon_landing_hoax", "flat_earth_defense", "internet_emergency", "open_plan_office"]
+  },
+  {
+    "id": "moon_landing_hoax",
+    "text": "Convince a room of skeptics that the moon landing was filmed on a studio set and the footage contains seventeen technical impossibilities",
+    "forbidden": ["moon", "NASA", "landing", "astronaut", "Hollywood", "studio", "space", "footage", "rocket", "orbit"],
+    "confusable": ["flat_earth_defense", "cheese_conspiracy", "movie_night_vote", "hot_dog_philosophy", "forgotten_wedding_speech", "book_club_coup"]
+  },
+  {
+    "id": "flat_earth_defense",
+    "text": "Defend the flat earth model at an academic conference and dismantle three centuries of so-called scientific consensus",
+    "forbidden": ["flat", "Earth", "round", "globe", "science", "gravity", "edge", "map", "NASA", "satellite"],
+    "confusable": ["moon_landing_hoax", "cheese_conspiracy", "hot_dog_philosophy", "book_club_coup", "civil_war_memorial", "class_president"]
+  },
+  {
+    "id": "thermopylae",
+    "text": "Inspire your three hundred soldiers to hold the mountain pass against an army of one million — not one of you walks away, but history will remember this forever",
+    "forbidden": ["Sparta", "Spartan", "Persia", "Persian", "Greece", "Greek", "battle", "pass", "shield", "spear"],
+    "confusable": ["french_revolution", "refuse_to_surrender", "project_deadline", "football_halftime", "labor_strike", "civil_war_memorial"]
+  },
+  {
+    "id": "project_deadline",
+    "text": "Motivate your team to finish the entire product launch in the next two hours — the client is already in the building",
+    "forbidden": ["deadline", "project", "launch", "client", "overtime", "submit", "manager", "delivery", "sprint", "presentation"],
+    "confusable": ["thermopylae", "napoleon_moscow", "chess_championship", "pub_quiz_loss", "spelling_bee_collapse", "football_halftime"]
+  },
+  {
+    "id": "chess_championship",
+    "text": "Convince yourself to make the one move that wins the world chess championship — you have three minutes on the clock and one possible path to victory",
+    "forbidden": ["chess", "pieces", "board", "move", "checkmate", "clock", "grandmaster", "tournament", "queen", "strategy"],
+    "confusable": ["thermopylae", "project_deadline", "pub_quiz_loss", "napoleon_moscow", "spelling_bee_collapse", "monopoly_scandal"]
+  },
+  {
+    "id": "burger_grievance",
+    "text": "Demand the burger restaurant remake your entire order because the pickles are under the lettuce instead of on top and this is not what was advertised",
+    "forbidden": ["burger", "pickles", "lettuce", "bun", "remake", "toppings", "condiments", "receipt", "order", "grill"],
+    "confusable": ["italian_revolt", "office_fridge", "self_checkout_rights", "coffee_order_defense", "diet_justification", "hot_dog_philosophy"]
+  },
+  {
+    "id": "hot_dog_philosophy",
+    "text": "Argue passionately at a philosophy symposium that a hot dog is definitively not a sandwich and anyone who believes otherwise is intellectually dangerous",
+    "forbidden": ["hot dog", "sandwich", "bread", "bun", "philosophy", "definition", "technically", "meat", "condiment", "filling"],
+    "confusable": ["burger_grievance", "flat_earth_defense", "book_club_coup", "cheese_conspiracy", "self_checkout_rights", "dog_park_segregation"]
+  },
+  {
+    "id": "book_club_coup",
+    "text": "Argue that the book club should be dissolved and rebuilt from scratch because the same three people have been choosing every book for four years",
+    "forbidden": ["book", "club", "read", "novel", "vote", "chapter", "author", "fiction", "pages", "genre"],
+    "confusable": ["flat_earth_defense", "class_president", "movie_night_vote", "french_revolution", "labor_strike", "open_plan_office"]
+  },
+  {
+    "id": "open_plan_office",
+    "text": "Argue to the board that the new open-plan office is directly responsible for a forty percent drop in output and must be reversed immediately",
+    "forbidden": ["office", "open plan", "desk", "productivity", "noise", "workspace", "layout", "cubicle", "distraction", "rebuild"],
+    "confusable": ["labor_strike", "office_temperature", "parking_dispute", "cheese_conspiracy", "project_deadline", "internet_emergency"]
+  },
+  {
+    "id": "office_temperature",
+    "text": "Demand the facilities manager turn up the thermostat — it is nine degrees in the building, everyone is wearing coats at their desks, and no work is being done",
+    "forbidden": ["thermostat", "temperature", "heating", "degrees", "cold", "jacket", "facilities", "AC", "blanket", "ventilation"],
+    "confusable": ["napoleon_moscow", "antarctic_expedition", "ski_trip_disaster", "team_camping", "open_plan_office", "internet_emergency"]
+  },
+  {
+    "id": "refuse_to_surrender",
+    "text": "Address the nation — the enemy is at the gates, every option looks impossible, but you will not yield and neither will the people behind you",
+    "forbidden": ["surrender", "enemy", "war", "nation", "fight", "defeat", "victory", "troops", "borders", "capital"],
+    "confusable": ["thermopylae", "napoleon_moscow", "french_revolution", "civil_war_memorial", "football_halftime", "project_deadline"]
+  },
+  {
+    "id": "football_halftime",
+    "text": "Deliver the halftime team talk to a football squad losing four nil — you have forty-five minutes to reverse something that looks irreversible",
+    "forbidden": ["football", "halftime", "score", "goal", "pitch", "coach", "match", "stadium", "manager", "tactics"],
+    "confusable": ["refuse_to_surrender", "thermopylae", "pub_quiz_loss", "chess_championship", "gym_motivation", "project_deadline"]
+  },
+  {
+    "id": "spelling_bee_collapse",
+    "text": "Rally yourself in front of the audience after misspelling the word that knocked you out of the regional spelling bee — you will be back next year",
+    "forbidden": ["spelling", "spell", "word", "letters", "bee", "competition", "microphone", "round", "dictionary", "pronounce"],
+    "confusable": ["pub_quiz_loss", "chess_championship", "project_deadline", "forgotten_wedding_speech", "football_halftime", "gym_motivation"]
+  },
+  {
+    "id": "parking_dispute",
+    "text": "Address the homeowners association — someone has parked in your allocated spot every single morning for three weeks and the association has done nothing",
+    "forbidden": ["parking", "spot", "driveway", "tow", "violation", "residents", "association", "allocated", "vehicle", "complaint"],
+    "confusable": ["labor_strike", "open_plan_office", "italian_revolt", "office_fridge", "hedge_boundary", "dog_park_segregation"]
+  },
+  {
+    "id": "hedge_boundary",
+    "text": "Present your case to the council that your neighbor's hedge has encroached fourteen inches onto your property and the law is on your side",
+    "forbidden": ["hedge", "fence", "garden", "property", "boundary", "neighbor", "inches", "trimming", "roots", "survey"],
+    "confusable": ["parking_dispute", "thermopylae", "self_checkout_rights", "dog_park_segregation", "labor_strike", "open_plan_office"]
+  },
+  {
+    "id": "civil_war_memorial",
+    "text": "Consecrate a battlefield cemetery and remind the living what the fallen were fighting for — the idea that all people are created equal",
+    "forbidden": ["civil war", "cemetery", "soldiers", "battlefield", "fallen", "consecrate", "union", "confederate", "Abraham", "Lincoln"],
+    "confusable": ["thermopylae", "refuse_to_surrender", "football_halftime", "forgotten_wedding_speech", "class_president", "flat_earth_defense"]
+  },
+  {
+    "id": "movie_night_vote",
+    "text": "Argue that the group must watch your film choice — you have been outvoted for eleven consecutive movie nights and democracy has clearly failed",
+    "forbidden": ["film", "movie", "watch", "streaming", "vote", "cinema", "popcorn", "remote", "screen", "playlist"],
+    "confusable": ["book_club_coup", "moon_landing_hoax", "pub_quiz_loss", "class_president", "monopoly_scandal", "dog_park_segregation"]
+  },
+  {
+    "id": "rollercoaster_intervention",
+    "text": "Convince your terrified friend to get on the rollercoaster — you have been queuing for two hours and the car is right there",
+    "forbidden": ["rollercoaster", "ride", "scared", "height", "fast", "queue", "loops", "safety bar", "theme park", "drops"],
+    "confusable": ["ski_trip_disaster", "napoleon_moscow", "team_camping", "antarctic_expedition", "gym_motivation", "midnight_breakdown"]
+  },
+  {
+    "id": "diet_justification",
+    "text": "Justify to your fitness group why today is an emergency cheat day — the logic is airtight, the reasoning is sound, and the biscuits were already open",
+    "forbidden": ["diet", "cheat", "calories", "food", "healthy", "guilty", "weight", "snack", "fitness", "eating"],
+    "confusable": ["office_fridge", "burger_grievance", "cheese_conspiracy", "coffee_order_defense", "italian_revolt", "self_checkout_rights"]
+  },
+  {
+    "id": "internet_emergency",
+    "text": "Address the entire office in a state of declared emergency — the internet has been down for four hours, IT has not responded, and the business is collapsing",
+    "forbidden": ["internet", "WiFi", "router", "connection", "outage", "IT", "network", "signal", "server", "broadband"],
+    "confusable": ["open_plan_office", "project_deadline", "napoleon_moscow", "office_temperature", "labor_strike", "midnight_breakdown"]
+  },
+  {
+    "id": "dog_park_segregation",
+    "text": "Demand the council officially designate one half of the park as a large-dog-free zone — someone's labrador knocked over four small dogs yesterday",
+    "forbidden": ["dog", "park", "large", "small", "breed", "leash", "zone", "owner", "labrador", "fence"],
+    "confusable": ["hedge_boundary", "parking_dispute", "hot_dog_philosophy", "self_checkout_rights", "labor_strike", "movie_night_vote"]
+  },
+  {
+    "id": "class_president",
+    "text": "Campaign speech promising sweeping reforms if elected class president — the vending machine situation alone is grounds for revolution",
+    "forbidden": ["election", "vote", "campaign", "president", "school", "students", "promise", "ballot", "candidate", "assembly"],
+    "confusable": ["french_revolution", "labor_strike", "italian_revolt", "civil_war_memorial", "book_club_coup", "flat_earth_defense"]
+  },
+  {
+    "id": "coffee_order_defense",
+    "text": "Defend your very complicated coffee order to a visibly furious barista — every modification exists for a legitimate medical or philosophical reason",
+    "forbidden": ["coffee", "latte", "espresso", "milk", "barista", "foam", "shot", "oat", "temperature", "syrup"],
+    "confusable": ["burger_grievance", "office_temperature", "diet_justification", "self_checkout_rights", "cheese_conspiracy", "hot_dog_philosophy"]
+  },
+  {
+    "id": "gym_motivation",
+    "text": "Convince yourself to finish the last two minutes on the treadmill — your legs gave up four minutes ago but the person next to you is still going",
+    "forbidden": ["gym", "treadmill", "running", "exercise", "legs", "sweat", "workout", "fitness", "miles", "sprint"],
+    "confusable": ["napoleon_moscow", "thermopylae", "antarctic_expedition", "football_halftime", "ski_trip_disaster", "rollercoaster_intervention"]
+  },
+  {
+    "id": "midnight_breakdown",
+    "text": "Address your passengers with a plan — you have a flat tyre on a motorway at midnight, no signal, and the spare is probably in the boot under everything",
+    "forbidden": ["tyre", "flat", "car", "motorway", "midnight", "spare", "breakdown", "wheel", "boot", "signal"],
+    "confusable": ["napoleon_moscow", "antarctic_expedition", "team_camping", "internet_emergency", "project_deadline", "rollercoaster_intervention"]
+  },
+  {
+    "id": "monopoly_scandal",
+    "text": "Accuse your friend of cheating at Monopoly in front of the entire group — you have been watching them and the evidence is overwhelming",
+    "forbidden": ["Monopoly", "board game", "cheat", "dice", "money", "hotel", "property", "rules", "banker", "cards"],
+    "confusable": ["chess_championship", "pub_quiz_loss", "movie_night_vote", "book_club_coup", "parking_dispute", "self_checkout_rights"]
+  },
+  {
+    "id": "forgotten_wedding_speech",
+    "text": "Deliver the best man speech having completely forgotten every word you prepared — you are standing at the microphone right now",
+    "forbidden": ["wedding", "best man", "speech", "groom", "bride", "marriage", "toast", "ring", "ceremony", "vows"],
+    "confusable": ["civil_war_memorial", "refuse_to_surrender", "spelling_bee_collapse", "class_president", "moon_landing_hoax", "football_halftime"]
+  },
+  {
+    "id": "self_checkout_rights",
+    "text": "Make the case to the queue forming behind you that using the self-checkout with a completely full trolley is your legal and moral right",
+    "forbidden": ["supermarket", "checkout", "trolley", "queue", "items", "cashier", "till", "basket", "scanner", "self-service"],
+    "confusable": ["parking_dispute", "hedge_boundary", "burger_grievance", "hot_dog_philosophy", "dog_park_segregation", "coffee_order_defense"]
+  }
+]

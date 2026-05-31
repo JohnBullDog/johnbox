@@ -160,6 +160,7 @@ socket.on('lobby:update', ({ players }) => {
 // ── Game phases ────────────────────────────────────────────
 
 socket.on('host:phase', (data) => {
+  if (data.game === 'gsls') return;  // handled by GSLS listener below
   currentPhase = data.phase;
   showScreen('s-game');
 
@@ -512,6 +513,7 @@ function tgCopyWheel(fromId, toId) {
 // ── Phase handlers ─────────────────────────────────────────
 
 socket.on('host:phase', (data) => {
+  if (data.game === 'gsls') return;
   // TagGame phases
   switch (data.phase) {
     case 'spin_ready':    tgHandleSpinReady(data);    return;
@@ -822,3 +824,321 @@ function tgRenderSkitPerformers(performers, calloutData, threshold, nonPerformer
     `;
   }).join('');
 }
+
+// ═══════════════════════════════════════════════════════════
+// GSLS — General Statement's Last Stand host handlers
+// ═══════════════════════════════════════════════════════════
+
+let gslsAideCtx = null;  // current active aide canvas context
+
+function gslsShowPanel(id) {
+  document.querySelectorAll('.gsls-panel').forEach(p => p.style.display = 'none');
+  const el = document.getElementById(id);
+  if (el) el.style.display = 'flex';
+}
+
+function gslsSetTimer(timeLeft, max) {
+  document.getElementById('gsls-timer-num').textContent = timeLeft;
+  const pct = max > 0 ? timeLeft / max : 0;
+  const circ = document.getElementById('gsls-timer-circle');
+  if (circ) circ.style.strokeDashoffset = 100 * (1 - pct);
+}
+
+function gslsForbiddenHtml(words) {
+  return (words || []).map(w =>
+    `<span class="gsls-forbidden-pill">${esc(w)}</span>`
+  ).join('');
+}
+
+function gslsHecklesToHtml(heckles) {
+  return (heckles || []).map(h =>
+    `<div class="gsls-heckle-item">"${esc(h)}"</div>`
+  ).join('');
+}
+
+function gslsScoreboard(players) {
+  const el = document.getElementById('gsls-scoreboard');
+  if (!el || !players) return;
+  el.innerHTML = [...players].sort((a,b) => b.score - a.score).map(p =>
+    `<div class="gsls-score-row">
+      <div style="width:10px;height:10px;border-radius:50%;background:${p.color};flex-shrink:0;"></div>
+      <div style="flex:1;font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(p.name)}</div>
+      <div style="font-size:13px;font-weight:900;color:var(--teal);">${p.score}</div>
+    </div>`
+  ).join('');
+}
+
+function gslsRoleBadge(elId, name, color) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.textContent = name;
+  el.style.borderLeft = `4px solid ${color}`;
+  el.style.background = color + '22';
+}
+
+function gslsInitAideCanvas(canvasId) {
+  const c = document.getElementById(canvasId);
+  if (!c) return null;
+  c.width  = c.offsetWidth  || 400;
+  c.height = c.offsetHeight || 220;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, c.width, c.height);
+  return ctx;
+}
+
+function gslsDrawOnCanvas(ctx, ev) {
+  if (!ctx) return;
+  const w = ctx.canvas.width, h = ctx.canvas.height;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (ev.type === 'line') {
+    ctx.beginPath();
+    ctx.moveTo(ev.x0 * w, ev.y0 * h);
+    ctx.lineTo(ev.x1 * w, ev.y1 * h);
+    ctx.strokeStyle = ev.color; ctx.lineWidth = ev.size; ctx.stroke();
+  } else if (ev.type === 'dot') {
+    ctx.beginPath();
+    ctx.arc(ev.x * w, ev.y * h, ev.size / 2, 0, Math.PI * 2);
+    ctx.fillStyle = ev.color; ctx.fill();
+  } else if (ev.type === 'clear') {
+    ctx.fillStyle = 'white'; ctx.fillRect(0, 0, w, h);
+  }
+}
+
+// ── GSLS socket events ──────────────────────────────────────
+
+socket.on('host:phase', (data) => {
+  if (data.game !== 'gsls') return;
+
+  showScreen('s-gsls');
+  document.getElementById('gsls-hdr-turn').textContent =
+    data.turnNumber != null ? `Turn ${data.turnNumber}/${data.totalTurns}` : '⚔️ Last Stand';
+
+  switch (data.phase) {
+
+    case 'turn_setup':
+      gslsShowPanel('gp-setup');
+      document.getElementById('gsls-hdr-phase').textContent = 'Turn Setup';
+      gslsSetTimer(4, 4);
+      document.getElementById('gp-setup-speaker-name').textContent = data.speaker.name;
+      document.getElementById('gp-setup-speaker-name').style.color = data.speaker.color;
+      document.getElementById('gp-setup-aide-name').textContent = data.aide.name;
+      document.getElementById('gp-setup-aide-name').style.color = data.aide.color;
+      document.getElementById('gp-setup-topic').textContent = data.truePromptText;
+      break;
+
+    case 'prep':
+      gslsShowPanel('gp-prep');
+      document.getElementById('gsls-hdr-phase').textContent = 'Prep';
+      gslsSetTimer(data.timeLeft || 30, 30);
+      gslsRoleBadge('gp-prep-speaker-badge', '🎙️ ' + data.speakerName, '#4ecdc4');
+      gslsRoleBadge('gp-prep-aide-badge', '✏️ ' + data.aideName, '#ffeaa7');
+      document.getElementById('gp-prep-topic').textContent = data.truePromptText || '';
+      gslsAideCtx = gslsInitAideCanvas('gsls-aide-canvas');
+      break;
+
+    case 'part1':
+      gslsShowPanel('gp-part1');
+      document.getElementById('gsls-hdr-phase').textContent = 'Part 1 — Opening';
+      gslsSetTimer(data.timeLeft || 45, 45);
+      gslsRoleBadge('gp-part1-speaker-badge', '🎙️ ' + data.speakerName, data.speakerColor);
+      gslsRoleBadge('gp-part1-aide-badge', '✏️ ' + data.aideName, data.aideColor);
+      document.getElementById('gp-part1-topic').textContent = data.truePromptText || '';
+      document.getElementById('gp-part1-forbidden').innerHTML = gslsForbiddenHtml(data.forbidden);
+      document.getElementById('gp-part1-napkin-count').textContent = 'Napkins sent: 0';
+      gslsAideCtx = gslsInitAideCanvas('gsls-aide-canvas-p1');
+      document.getElementById('gsls-reaction-meter').textContent = '—';
+      break;
+
+    case 'part2':
+      gslsShowPanel('gp-part2');
+      document.getElementById('gsls-hdr-phase').textContent = 'Part 2 — Address';
+      gslsSetTimer(data.timeLeft || 60, 60);
+      gslsRoleBadge('gp-part2-speaker-badge', '🎙️ ' + data.speakerName, data.speakerColor);
+      gslsRoleBadge('gp-part2-aide-badge', '✏️ ' + data.aideName, data.aideColor);
+      document.getElementById('gp-part2-topic').textContent = data.truePromptText || '';
+      document.getElementById('gp-part2-napkin-count').textContent = 'Napkins sent: 0';
+      gslsAideCtx = gslsInitAideCanvas('gsls-aide-canvas-p2');
+      document.getElementById('gsls-reaction-meter-p2').textContent = '—';
+      break;
+
+    case 'part3':
+      gslsShowPanel('gp-part3');
+      document.getElementById('gsls-hdr-phase').textContent = 'Part 3 — Heckles';
+      gslsSetTimer(data.timeLeft || 20, 20);
+      document.getElementById('gp-part3-count').textContent = `0/${data.audienceSize || 0}`;
+      break;
+
+    case 'part3_respond':
+      gslsShowPanel('gp-part3r');
+      document.getElementById('gsls-hdr-phase').textContent = 'Part 3 — Challenge';
+      gslsSetTimer(data.timeLeft || 45, 45);
+      gslsRoleBadge('gp-part3r-speaker-badge', '🎙️ ' + data.speakerName, data.speakerColor);
+      document.getElementById('gp-part3r-heckles').innerHTML = gslsHecklesToHtml(data.heckles);
+      document.getElementById('gsls-reaction-meter-p3').textContent = '—';
+      break;
+
+    case 'voting':
+      gslsShowPanel('gp-voting');
+      document.getElementById('gsls-hdr-phase').textContent = 'Voting';
+      gslsSetTimer(data.timeLeft || 20, 20);
+      document.getElementById('gp-voting-count').textContent = `0/${data.total || 0}`;
+      break;
+
+    case 'reveal': {
+      gslsShowPanel('gp-reveal');
+      document.getElementById('gsls-hdr-phase').textContent = 'Reveal!';
+      gslsSetTimer(10, 10);
+      document.getElementById('gp-reveal-true').textContent  = data.truePromptText;
+      document.getElementById('gp-reveal-decoy').textContent = data.decoyPromptText;
+      const had = data.speakerHadTrue ? 'TRUE prompt 🎯' : 'DECOY prompt 🎭';
+      const color = data.speakerHadTrue ? 'var(--teal)' : 'var(--coral)';
+      const resEl = document.getElementById('gp-reveal-result');
+      resEl.innerHTML = `<span style="color:var(--muted);">${esc(data.speakerName)}</span> had the <span style="color:${color};font-size:28px;">${had}</span>`;
+      resEl.style.background = data.speakerHadTrue ? '#1a3a2a' : '#3a1a1a';
+      if (data.deceptionBonus) resEl.innerHTML += ` <span style="color:var(--teal);font-size:20px;">+${data.deceptionBonus} Deception Bonus!</span>`;
+      const sc = document.getElementById('gp-reveal-scores');
+      sc.innerHTML = `
+        <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:14px;">
+          <div style="background:var(--surface);padding:10px 16px;border-radius:8px;"><span style="color:var(--muted);">Speaker</span> <strong style="color:var(--teal);">+${data.speakerScore}</strong></div>
+          <div style="background:var(--surface);padding:10px 16px;border-radius:8px;"><span style="color:var(--muted);">Aide</span> <strong style="color:#ffeaa7;">+${data.aideScore}</strong></div>
+          <div style="background:var(--surface);padding:10px 16px;border-radius:8px;"><span style="color:var(--muted);">True votes</span> <strong>${data.trueVotes}</strong> / Decoy <strong>${data.decoyVotes}</strong></div>
+        </div>`;
+      gslsScoreboard(data.players);
+      break;
+    }
+
+    case 'last_stand_intro': {
+      gslsShowPanel('gp-ls-intro');
+      document.getElementById('gsls-hdr-phase').textContent = '⚔️ LAST STAND';
+      document.getElementById('gsls-hdr-turn').textContent = '⚔️ Last Stand';
+      gslsSetTimer(5, 5);
+      const d1c = document.getElementById('gp-ls-d1-card');
+      d1c.innerHTML = `<div style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;">Debater 1</div><div style="font-size:24px;font-weight:900;color:${data.debater1.color}">${esc(data.debater1.name)}</div>`;
+      const d2c = document.getElementById('gp-ls-d2-card');
+      d2c.innerHTML = `<div style="color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;">Debater 2</div><div style="font-size:24px;font-weight:900;color:${data.debater2.color}">${esc(data.debater2.name)}</div>`;
+      document.getElementById('gp-ls-intro-topic1').textContent = data.trueTopics[0];
+      document.getElementById('gp-ls-intro-topic2').textContent = data.trueTopics[1];
+      break;
+    }
+
+    case 'last_stand_prep':
+      gslsShowPanel('gp-ls-prep');
+      document.getElementById('gsls-hdr-phase').textContent = 'Last Stand Prep';
+      gslsSetTimer(data.timeLeft || 30, 30);
+      // forbidden words shown after first phase
+      break;
+
+    case 'last_stand_debate':
+      gslsShowPanel('gp-ls-debate');
+      document.getElementById('gsls-hdr-phase').textContent = '⚔️ Debate';
+      gslsSetTimer(data.timeLeft || 150, 150);
+      gslsRoleBadge('gp-ls-d1-badge', data.debater1.name, data.debater1.color);
+      gslsRoleBadge('gp-ls-d2-badge', data.debater2.name, data.debater2.color);
+      document.getElementById('gp-ls-debate-forbidden').innerHTML = gslsForbiddenHtml(data.forbidden);
+      break;
+
+    case 'last_stand_heckle':
+      gslsShowPanel('gp-ls-heckle');
+      document.getElementById('gsls-hdr-phase').textContent = 'Audience Questions';
+      gslsSetTimer(data.timeLeft || 20, 20);
+      document.getElementById('gp-ls-heckle-count').textContent = `0/${data.total || 0}`;
+      break;
+
+    case 'last_stand_challenge':
+      gslsShowPanel('gp-ls-challenge');
+      document.getElementById('gsls-hdr-phase').textContent = '⚔️ Challenge';
+      gslsSetTimer(data.timeLeft || 45, 45);
+      document.getElementById('gp-ls-challenge-heckles').innerHTML = gslsHecklesToHtml(data.heckles);
+      document.getElementById('gp-ls-challenge-forbidden').innerHTML = gslsForbiddenHtml(data.forbidden);
+      break;
+
+    case 'last_stand_voting':
+      gslsShowPanel('gp-ls-voting');
+      document.getElementById('gsls-hdr-phase').textContent = 'Vote — Who Won?';
+      gslsSetTimer(data.timeLeft || 20, 20);
+      document.getElementById('gp-ls-vote-count').textContent = `0/${data.total || 0}`;
+      break;
+
+    case 'last_stand_reveal': {
+      gslsShowPanel('gp-ls-reveal');
+      document.getElementById('gsls-hdr-phase').textContent = '🎭 Reveal!';
+      gslsSetTimer(10, 10);
+      const winner = data.winnerId === data.debater1.id ? data.debater1 : data.debater2;
+      document.getElementById('gp-ls-reveal-winner').innerHTML =
+        `🏆 <span style="color:${winner.color};">${esc(winner.name)}</span> wins the debate!`;
+      document.getElementById('gp-ls-reveal-winner').style.background = winner.color + '22';
+      const d1r = document.getElementById('gp-ls-reveal-d1');
+      d1r.innerHTML = `<div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px;">${esc(data.debater1.name)} was arguing about…</div><div style="background:#1a2a3a;border-left:4px solid ${data.debater1.color};padding:12px;border-radius:8px;">${esc(data.debater1.prompt)}</div><div style="margin-top:4px;font-size:13px;color:var(--muted);">${data.debater1.votes} vote${data.debater1.votes !== 1 ? 's' : ''}</div>`;
+      const d2r = document.getElementById('gp-ls-reveal-d2');
+      d2r.innerHTML = `<div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px;">${esc(data.debater2.name)} was arguing about…</div><div style="background:#1a2a3a;border-left:4px solid ${data.debater2.color};padding:12px;border-radius:8px;">${esc(data.debater2.prompt)}</div><div style="margin-top:4px;font-size:13px;color:var(--muted);">${data.debater2.votes} vote${data.debater2.votes !== 1 ? 's' : ''}</div>`;
+      gslsScoreboard(data.players);
+      break;
+    }
+  }
+});
+
+// GSLS game_over
+socket.on('host:phase', (data) => {
+  if (data.game !== 'gsls' || data.phase !== 'game_over') return;
+  showScreen('s-gsls');
+  gslsShowPanel('gp-gameover');
+  document.getElementById('gsls-hdr-phase').textContent = 'Game Over';
+  const medals = ['🥇','🥈','🥉'];
+  const heights = [200,160,120];
+  const top3 = data.players.slice(0,3);
+  const order = top3.length >= 3 ? [1,0,2] : [0,1,2];
+  document.getElementById('gp-go-podium').innerHTML = order.filter(i => top3[i]).map(i => {
+    const p = top3[i];
+    return `<div class="podium-slot"><div class="podium-name">${esc(p.name)}</div><div class="podium-score">${p.score} pts</div><div class="podium-block" style="height:${heights[i]}px;background:${p.color};color:#000;">${medals[i]||p.rank}</div></div>`;
+  }).join('');
+  document.getElementById('gp-go-list').innerHTML = data.players.map(p =>
+    `<div class="final-row"><div class="final-rank">${p.rank}</div><div class="player-dot" style="background:${p.color}"></div><div class="final-name">${esc(p.name)}</div><div class="final-score">${p.score} pts</div></div>`
+  ).join('');
+});
+
+socket.on('timer', ({ timeLeft }) => {
+  if (!document.getElementById('s-gsls').classList.contains('active')) return;
+  const num = document.getElementById('gsls-timer-num');
+  if (num) {
+    const max = parseInt(num.dataset.max || timeLeft) || timeLeft;
+    gslsSetTimer(timeLeft, max);
+  }
+});
+
+socket.on('gsls:aide_draw', ({ event }) => {
+  gslsDrawOnCanvas(gslsAideCtx, event);
+});
+
+socket.on('gsls:napkin_sent', ({ count }) => {
+  ['gp-part1-napkin-count','gp-part2-napkin-count'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = `Napkins sent: ${count}`;
+  });
+});
+
+socket.on('gsls:heckle_count', ({ submitted, total }) => {
+  const ids = ['gp-part3-count','gp-ls-heckle-count'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = `${submitted}/${total}`;
+  });
+});
+
+socket.on('gsls:vote_count', ({ voted, total }) => {
+  const ids = ['gp-voting-count','gp-ls-vote-count'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = `${voted}/${total}`;
+  });
+});
+
+socket.on('gsls:reaction_update', ({ reactions }) => {
+  const total = Object.values(reactions).reduce((s, r) => s + r.net, 0);
+  const sign = total >= 0 ? '+' : '';
+  const str = `${sign}${total} net`;
+  ['gsls-reaction-meter','gsls-reaction-meter-p2','gsls-reaction-meter-p3'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = str; el.style.color = total >= 0 ? 'var(--teal)' : 'var(--coral)'; }
+  });
+});

@@ -101,6 +101,9 @@ socket.on('player:phase', (data) => {
   // Acknowledge receipt so the server stops retrying
   if (data._msgId != null) socket.emit('phase:ack', { msgId: data._msgId });
 
+  // GSLS events are tagged game:'gsls' and handled by the GSLS listener below
+  if (data.game === 'gsls') return;
+
   // TagGame phases
   switch (data.phase) {
     case 'spin_ready':    tgHandleSpinReady(data);    return;
@@ -871,3 +874,474 @@ function tgRenderVotePerformers(performers, calloutData, threshold, nonPerformer
     `;
   }).join('');
 }
+
+// ═══════════════════════════════════════════════════════════
+// GSLS — General Statement's Last Stand player handlers
+// ═══════════════════════════════════════════════════════════
+
+let gslsMyRole      = null;   // 'speaker'|'aide'|'audience'|'debater'
+let gslsMyNet       = 0;      // personal reaction net
+let gslsAideDrawing = false;
+let gslsAideLastX   = 0, gslsAideLastY = 0;
+let gslsAideColor   = '#1a1a1a';
+let gslsAideSize    = 6;
+
+// ── Forbidden word pill helper ──────────────────────────────
+
+function gslsForbiddenPills(words) {
+  return (words || []).map(w =>
+    `<span style="background:#3a1a1a;color:#ff6b6b;border:1px solid #ff6b6b;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;">${esc(w)}</span>`
+  ).join('');
+}
+
+function gslsNapkinHtml(napkin) {
+  return `<div style="border-radius:8px;overflow:hidden;border:2px solid #ffeaa7;max-width:300px;">
+    <div style="font-size:10px;background:#ffeaa7;color:#1a1a1a;padding:3px 8px;font-weight:700;">📜 Napkin #${napkin.index + 1}</div>
+    <img src="${napkin.imageData}" style="width:100%;display:block;" />
+  </div>`;
+}
+
+function gslsHeckleList(heckles) {
+  return (heckles || []).map(h =>
+    `<div style="background:var(--card);border-radius:8px;padding:10px 14px;font-style:italic;font-size:14px;">"${esc(h)}"</div>`
+  ).join('');
+}
+
+// ── Phase routing ───────────────────────────────────────────
+
+socket.on('player:phase', (data) => {
+  if (data.game !== 'gsls') return;
+
+  switch (data.phase) {
+    case 'turn_setup':        gslsHandleSetup(data);        break;
+    case 'prep':              gslsHandlePrep(data);         break;
+    case 'part1':             gslsHandlePart1(data);        break;
+    case 'part2':             gslsHandlePart2(data);        break;
+    case 'part3':             gslsHandlePart3(data);        break;
+    case 'part3_respond':     gslsHandlePart3Respond(data); break;
+    case 'voting':            gslsHandleVoting(data);       break;
+    case 'reveal':            gslsHandleReveal(data);       break;
+    case 'last_stand_intro':  gslsHandleLsIntro(data);      break;
+    case 'last_stand_prep':   gslsHandleLsPrep(data);       break;
+    case 'last_stand_debate': gslsHandleLsDebate(data);     break;
+    case 'last_stand_heckle': gslsHandleLsHeckle(data);     break;
+    case 'last_stand_challenge': gslsHandleLsChallenge(data); break;
+    case 'last_stand_voting': gslsHandleLsVoting(data);     break;
+    case 'last_stand_reveal': gslsHandleLsReveal(data);     break;
+  }
+});
+
+function gslsHandleSetup(d) {
+  gslsMyRole = d.role;
+  gslsMyNet  = 0;
+  showScreen('s-gsls-setup');
+  document.getElementById('gsls-setup-title').textContent =
+    `Turn ${d.turnNumber}/${d.totalTurns}`;
+
+  const desc = d.role === 'speaker' ? '🎙️ You are the Speaker this round!'
+             : d.role === 'aide'    ? '✏️ You are the Aide this round!'
+             : `🎙️ ${esc(d.speakerName)} is speaking`;
+  document.getElementById('gsls-setup-role-desc').textContent = desc;
+
+  const detail = d.role === 'speaker'
+    ? `Your aide is <strong style="color:${d.aideColor}">${esc(d.aideName)}</strong>. They will pass you napkins.`
+    : d.role === 'aide'
+    ? `You will see both prompts. Draw hints and pass napkins to <strong style="color:#4ecdc4">${esc(d.speakerName)}</strong>.`
+    : `<strong>${esc(d.speakerName)}</strong> is speaking. Use cheer 👏 and boo 👎 to react.`;
+  document.getElementById('gsls-setup-detail').innerHTML = detail;
+}
+
+function gslsHandlePrep(d) {
+  gslsMyRole = d.role;
+  if (d.role === 'speaker') {
+    showScreen('s-gsls-speaker-prep');
+    document.getElementById('gsls-sp-prompt').textContent = d.promptText;
+    document.getElementById('gsls-sp-forbidden').innerHTML = gslsForbiddenPills(d.forbidden);
+    document.getElementById('gsls-sp-timer').textContent = d.timeLeft;
+  } else if (d.role === 'aide') {
+    showScreen('s-gsls-aide');
+    document.getElementById('gsls-aide-true').textContent  = d.truePromptText;
+    document.getElementById('gsls-aide-decoy').textContent = d.decoyPromptText;
+    document.getElementById('gsls-aide-speaker-name').textContent = d.speakerName;
+    document.getElementById('gsls-aide-napkin-count').textContent = '0 sent';
+    gslsInitAideCanvas();
+  } else {
+    showScreen('s-gsls-audience');
+    document.getElementById('gsls-aud-topic').textContent = d.truePromptText;
+    document.getElementById('gsls-aud-phase-label').textContent = 'Speaker is preparing…';
+    document.getElementById('gsls-aud-my-net').textContent = 'Cheer/boo activates soon';
+    document.getElementById('gsls-btn-cheer').disabled = true;
+    document.getElementById('gsls-btn-boo').disabled   = true;
+  }
+}
+
+function gslsHandlePart1(d) {
+  gslsMyRole = d.role;
+  if (d.role === 'speaker') {
+    showScreen('s-gsls-speaker-active');
+    document.getElementById('gsls-sa-forbidden-banner').innerHTML =
+      `⚠️ FORBIDDEN: ${gslsForbiddenPills(d.forbidden)}`;
+    document.getElementById('gsls-sa-prompt').textContent = d.promptText;
+    document.getElementById('gsls-sa-timer').textContent  = d.timeLeft;
+    // Show any napkins already received
+    const nc = document.getElementById('gsls-napkins');
+    nc.innerHTML = (d.napkins || []).map(gslsNapkinHtml).join('');
+    document.getElementById('gsls-napkin-label').style.display = d.napkins?.length ? 'block' : 'none';
+  } else if (d.role === 'aide') {
+    showScreen('s-gsls-aide');
+    document.getElementById('gsls-aide-true').textContent  = d.truePromptText;
+    document.getElementById('gsls-aide-decoy').textContent = d.decoyPromptText;
+    document.getElementById('gsls-aide-napkin-count').textContent = (d.napkinsSent || 0) + ' sent';
+  } else {
+    showScreen('s-gsls-audience');
+    document.getElementById('gsls-aud-topic').textContent = d.truePromptText;
+    document.getElementById('gsls-aud-phase-label').textContent = '🗣️ Part 1 — Forbidden words active on speaker\'s side!';
+    document.getElementById('gsls-aud-my-net').textContent = 'Your reaction: 0';
+    document.getElementById('gsls-btn-cheer').disabled = false;
+    document.getElementById('gsls-btn-boo').disabled   = false;
+  }
+}
+
+function gslsHandlePart2(d) {
+  gslsMyRole = d.role;
+  if (d.role === 'speaker') {
+    showScreen('s-gsls-speaker-active');
+    document.getElementById('gsls-sa-forbidden-banner').innerHTML =
+      `<span style="color:var(--teal);">✅ Forbidden words lifted — speak freely!</span>`;
+    document.getElementById('gsls-sa-forbidden-banner').style.background = '#1a3a2a';
+    document.getElementById('gsls-sa-forbidden-banner').style.borderColor = 'var(--teal)';
+    document.getElementById('gsls-sa-prompt').textContent = d.promptText;
+    document.getElementById('gsls-sa-timer').textContent  = d.timeLeft;
+    const nc = document.getElementById('gsls-napkins');
+    nc.innerHTML = (d.napkins || []).map(gslsNapkinHtml).join('');
+  } else if (d.role === 'aide') {
+    showScreen('s-gsls-aide');
+    document.getElementById('gsls-aide-napkin-count').textContent = (d.napkinsSent || 0) + ' sent';
+  } else {
+    showScreen('s-gsls-audience');
+    document.getElementById('gsls-aud-phase-label').textContent = '🗣️ Part 2 — Forbidden words lifted';
+    document.getElementById('gsls-btn-cheer').disabled = false;
+    document.getElementById('gsls-btn-boo').disabled   = false;
+  }
+}
+
+function gslsHandlePart3(d) {
+  gslsMyRole = d.role;
+  if (d.role === 'speaker') {
+    showScreen('s-gsls-speaker-heckle-wait');
+  } else if (d.role === 'aide') {
+    showWaiting('✏️', 'Audience writing questions', `You sent ${d.napkinsSent || 0} napkins — great work!`);
+  } else {
+    showScreen('s-gsls-heckle');
+    document.getElementById('gsls-heckle-input').value = '';
+    document.getElementById('gsls-heckle-err').textContent = '';
+  }
+}
+
+function gslsHandlePart3Respond(d) {
+  gslsMyRole = d.role;
+  if (d.role === 'speaker') {
+    showScreen('s-gsls-speaker-challenge');
+    document.getElementById('gsls-sc-prompt').textContent = d.promptText;
+    document.getElementById('gsls-sc-heckles').innerHTML  = gslsHeckleList(d.heckles);
+    document.getElementById('gsls-sc-timer').textContent  = d.timeLeft;
+    const nc = document.getElementById('gsls-sc-napkins');
+    nc.innerHTML = (d.napkins || []).map(gslsNapkinHtml).join('');
+  } else if (d.role === 'aide') {
+    showWaiting('✏️', 'Speaker is responding', gslsHeckleList(d.heckles) ? 'Questions are live on the big screen' : '');
+  } else {
+    // Audience already submitted heckle — show waiting or cheer/boo
+    if (d.role === 'audience') {
+      showScreen('s-gsls-heckle-wait');
+      document.getElementById('gsls-heckle-wait-text').innerHTML =
+        gslsHeckleList(d.heckles) || 'Speaker is responding to questions…';
+    }
+  }
+}
+
+function gslsHandleVoting(d) {
+  gslsMyRole = d.role;
+  if (d.role === 'voter') {
+    showScreen('s-gsls-vote');
+    document.getElementById('gsls-vote-speaker-name').textContent =
+      `Did ${d.speakerName} have the true prompt or a decoy?`;
+  } else {
+    showWaiting('🗳️', 'Audience is voting…', d.role === 'speaker' ? 'Did they believe you?' : 'Did the speaker fool them?');
+  }
+}
+
+function gslsHandleReveal(d) {
+  showScreen('s-gsls-reveal');
+  const hadLabel = d.speakerHadTrue ? '🎯 TRUE Prompt' : '🎭 DECOY Prompt';
+  const hadColor = d.speakerHadTrue ? 'var(--teal)' : 'var(--coral)';
+  document.getElementById('gsls-rev-headline').innerHTML =
+    `${esc(d.speakerName)} had the <span style="color:${hadColor}">${hadLabel}</span>!`;
+  document.getElementById('gsls-rev-true-text').textContent  = d.truePromptText;
+  document.getElementById('gsls-rev-decoy-text').textContent = d.decoyPromptText;
+
+  let resultHtml = '';
+  if (d.myRole === 'speaker') {
+    resultHtml = `You scored <strong style="color:var(--teal);">+${d.speakerScore}</strong>`;
+    if (d.deceptionBonus) resultHtml += ` <span style="color:var(--teal);">+${d.deceptionBonus} Deception Bonus!</span>`;
+  } else if (d.myRole === 'aide') {
+    resultHtml = `Aide bonus: <strong style="color:#ffeaa7;">+${d.aideScore}</strong>`;
+  } else {
+    const correct = d.myGuessCorrect;
+    const voteLabel = d.myVote === 'true' ? 'True Prompt' : 'Decoy Prompt';
+    resultHtml = `You voted: ${voteLabel} — ${correct ? '✅ Correct! +50' : '❌ Wrong'}`;
+  }
+  document.getElementById('gsls-rev-result').innerHTML = resultHtml;
+  document.getElementById('gsls-rev-my-score').textContent = `Total: ${d.myScore} pts`;
+}
+
+// ── Last Stand ──────────────────────────────────────────────
+
+function gslsHandleLsIntro(d) {
+  gslsMyRole = d.role;
+  if (d.role === 'debater') {
+    showScreen('s-gsls-debater');
+    document.getElementById('gsls-deb-prompt').textContent = 'Your prompt loading…';
+    document.getElementById('gsls-deb-sub').textContent = 'Get ready — you\'re debating!';
+    document.getElementById('gsls-deb-forbidden').innerHTML = '';
+  } else {
+    showScreen('s-gsls-ls-watch');
+    document.getElementById('gsls-ls-debaters-display').innerHTML = `
+      <div style="background:${d.debater1Color}22;border:2px solid ${d.debater1Color};border-radius:10px;padding:10px 16px;font-weight:700;color:${d.debater1Color};">${esc(d.debater1Name)}</div>
+      <div style="font-size:20px;align-self:center;font-weight:900;">VS</div>
+      <div style="background:${d.debater2Color}22;border:2px solid ${d.debater2Color};border-radius:10px;padding:10px 16px;font-weight:700;color:${d.debater2Color};">${esc(d.debater2Name)}</div>`;
+  }
+}
+
+function gslsHandleLsPrep(d) {
+  if (d.role === 'debater') {
+    showScreen('s-gsls-debater');
+    document.getElementById('gsls-deb-prompt').textContent    = d.promptText;
+    document.getElementById('gsls-deb-forbidden').innerHTML   = gslsForbiddenPills(d.forbidden);
+    document.getElementById('gsls-deb-sub').textContent       = `You are debating against ${d.opponentName}`;
+    document.getElementById('gsls-deb-timer').textContent     = d.timeLeft;
+  } else {
+    showWaiting('📋', 'Debaters are preparing…', 'They each have a different topic. Neither knows the other\'s.');
+  }
+}
+
+function gslsHandleLsDebate(d) {
+  if (d.role === 'debater') {
+    showScreen('s-gsls-debater');
+    document.getElementById('gsls-deb-prompt').textContent  = d.promptText;
+    document.getElementById('gsls-deb-forbidden').innerHTML = gslsForbiddenPills(d.forbidden);
+    document.getElementById('gsls-deb-sub').textContent     = '⚔️ Debate is live — SPEAK!';
+    document.getElementById('gsls-deb-timer').textContent   = d.timeLeft;
+  } else {
+    showScreen('s-gsls-ls-watch');
+    document.getElementById('gsls-ls-timer').textContent = d.timeLeft;
+  }
+}
+
+function gslsHandleLsHeckle(d) {
+  if (d.role === 'debater') {
+    showWaiting('⏳', 'Audience writing questions', 'Almost there…');
+  } else {
+    showScreen('s-gsls-heckle');
+    document.getElementById('gsls-heckle-input').value = '';
+    document.getElementById('gsls-heckle-err').textContent = '';
+  }
+}
+
+function gslsHandleLsChallenge(d) {
+  if (d.role === 'debater') {
+    showScreen('s-gsls-debater');
+    document.getElementById('gsls-deb-prompt').textContent  = d.promptText;
+    document.getElementById('gsls-deb-forbidden').innerHTML = gslsForbiddenPills(d.forbidden);
+    document.getElementById('gsls-deb-sub').textContent     = 'Respond to a question!';
+    document.getElementById('gsls-deb-timer').textContent   = d.timeLeft;
+    // Show heckles below
+    const existing = document.getElementById('gsls-deb-forbidden');
+    const hDiv = document.createElement('div');
+    hDiv.innerHTML = gslsHeckleList(d.heckles);
+    existing.parentNode.insertBefore(hDiv, existing.nextSibling);
+  } else {
+    showScreen('s-gsls-heckle-wait');
+    document.getElementById('gsls-heckle-wait-text').innerHTML =
+      `Debaters are responding to questions`;
+  }
+}
+
+function gslsHandleLsVoting(d) {
+  if (d.role === 'waiting') {
+    showWaiting('🗳️', 'Audience is voting…', 'Who argued better?');
+  } else {
+    showScreen('s-gsls-ls-vote');
+    const btns = document.getElementById('gsls-ls-vote-btns');
+    btns.innerHTML = [d.debater1, d.debater2].map(debater => `
+      <button class="btn btn-primary" style="padding:18px;font-size:16px;font-weight:900;background:${debater.color};"
+        onclick="gslsVoteWinner('${debater.id}')">
+        ${esc(debater.name)}
+      </button>`
+    ).join('');
+  }
+}
+
+function gslsHandleLsReveal(d) {
+  showScreen('s-gsls-ls-reveal');
+  const winner = d.iWon ? 'You won! 🏆' :
+    (d.myRole === 'debater' ? 'You lost this one.' : `${esc([d.debater1, d.debater2].find(x => x.id === d.winnerId)?.name)} won!`);
+  document.getElementById('gsls-ls-rev-winner').textContent = winner;
+  document.getElementById('gsls-ls-rev-prompts').innerHTML = [d.debater1, d.debater2].map(deb =>
+    `<div style="background:${deb.id === d.winnerId ? '#1a3a2a' : 'var(--card)'};border-left:4px solid ${deb.color};padding:12px;border-radius:8px;">
+      <div style="font-size:11px;color:var(--muted);font-weight:700;margin-bottom:4px;">${esc(deb.name)} was arguing about… (${deb.votes} vote${deb.votes !== 1 ? 's' : ''})</div>
+      <div style="font-size:14px;font-weight:600;">${esc(deb.prompt)}</div>
+    </div>`
+  ).join('');
+  document.getElementById('gsls-ls-rev-my-score').textContent = `Your total: ${d.myScore} pts`;
+}
+
+// ── Actions ──────────────────────────────────────────────────
+
+function gslsReact(type) {
+  socket.emit('game:action', { type });
+  gslsMyNet += type === 'cheer' ? 1 : -1;
+  const capped = Math.max(-5, Math.min(5, gslsMyNet));
+  document.getElementById('gsls-aud-my-net').textContent =
+    `Your reaction: ${capped >= 0 ? '+' : ''}${capped} / ±5`;
+  const btn = document.getElementById(type === 'cheer' ? 'gsls-btn-cheer' : 'gsls-btn-boo');
+  btn.style.transform = 'scale(1.3)';
+  setTimeout(() => { btn.style.transform = 'scale(1)'; }, 100);
+}
+
+function gslsSubmitHeckle() {
+  const text = document.getElementById('gsls-heckle-input').value.trim();
+  if (!text) { document.getElementById('gsls-heckle-err').textContent = 'Write something!'; return; }
+  socket.emit('game:action', { type: 'submit_heckle', text });
+  showScreen('s-gsls-heckle-wait');
+}
+
+function gslsCastVote(vote) {
+  socket.emit('game:action', { type: 'submit_vote', vote });
+  showScreen('s-gsls-voted');
+}
+
+function gslsVoteWinner(winnerId) {
+  document.querySelectorAll('#gsls-ls-vote-btns button').forEach(b => b.disabled = true);
+  socket.emit('game:action', { type: 'last_stand_vote', winnerId });
+  showScreen('s-gsls-ls-voted');
+  document.getElementById('gsls-ls-voted-msg').textContent = 'Vote cast!';
+}
+
+// ── Incoming napkin (delivered to speaker) ───────────────────
+
+socket.on('gsls:napkin', (napkin) => {
+  const containers = ['gsls-napkins','gsls-sc-napkins'];
+  containers.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.insertAdjacentHTML('beforeend', gslsNapkinHtml(napkin));
+  });
+  document.getElementById('gsls-napkin-label').style.display = 'block';
+});
+
+// ── Timer updates ────────────────────────────────────────────
+
+socket.on('timer', ({ timeLeft }) => {
+  ['gsls-sp-timer','gsls-sa-timer','gsls-sc-timer','gsls-deb-timer','gsls-ls-timer'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.closest('.screen')?.classList.contains('active')) el.textContent = timeLeft;
+  });
+});
+
+// ── Aide canvas ───────────────────────────────────────────────
+
+function gslsInitAideCanvas() {
+  const canvas = document.getElementById('gsls-aide-draw-canvas');
+  if (!canvas) return;
+  const wrapper = canvas.parentElement;
+  const size = Math.min(wrapper.clientWidth || 340, 340);
+  canvas.width  = size;
+  canvas.height = Math.round(size * 0.6);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  canvas.removeEventListener('pointerdown', gslsPointerDown);
+  canvas.removeEventListener('pointermove', gslsPointerMove);
+  canvas.removeEventListener('pointerup',   gslsPointerUp);
+  canvas.removeEventListener('pointerleave',gslsPointerUp);
+  canvas.addEventListener('pointerdown', gslsPointerDown, { passive: false });
+  canvas.addEventListener('pointermove', gslsPointerMove, { passive: false });
+  canvas.addEventListener('pointerup',   gslsPointerUp,   { passive: false });
+  canvas.addEventListener('pointerleave',gslsPointerUp,   { passive: false });
+}
+
+function gslsAidePos(e) {
+  const c = document.getElementById('gsls-aide-draw-canvas');
+  const r = c.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+}
+
+function gslsPointerDown(e) {
+  e.preventDefault();
+  document.getElementById('gsls-aide-draw-canvas').setPointerCapture(e.pointerId);
+  gslsAideDrawing = true;
+  const p = gslsAidePos(e);
+  gslsAideLastX = p.x; gslsAideLastY = p.y;
+  gslsAideDrawLocal({ type: 'dot', x: p.x, y: p.y, color: gslsAideColor, size: gslsAideSize });
+  socket.emit('game:action', { type: 'aide_draw', event: { type: 'dot', x: p.x, y: p.y, color: gslsAideColor, size: gslsAideSize } });
+}
+
+function gslsPointerMove(e) {
+  e.preventDefault();
+  if (!gslsAideDrawing) return;
+  const p = gslsAidePos(e);
+  gslsAideDrawLocal({ type: 'line', x0: gslsAideLastX, y0: gslsAideLastY, x1: p.x, y1: p.y, color: gslsAideColor, size: gslsAideSize });
+  socket.emit('game:action', { type: 'aide_draw', event: { type: 'line', x0: gslsAideLastX, y0: gslsAideLastY, x1: p.x, y1: p.y, color: gslsAideColor, size: gslsAideSize } });
+  gslsAideLastX = p.x; gslsAideLastY = p.y;
+}
+
+function gslsPointerUp(e) { e.preventDefault(); gslsAideDrawing = false; }
+
+function gslsAideDrawLocal(ev) {
+  const canvas = document.getElementById('gsls-aide-draw-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (ev.type === 'line') {
+    ctx.beginPath(); ctx.moveTo(ev.x0*w, ev.y0*h); ctx.lineTo(ev.x1*w, ev.y1*h);
+    ctx.strokeStyle = ev.color; ctx.lineWidth = ev.size; ctx.stroke();
+  } else if (ev.type === 'dot') {
+    ctx.beginPath(); ctx.arc(ev.x*w, ev.y*h, ev.size/2, 0, Math.PI*2);
+    ctx.fillStyle = ev.color; ctx.fill();
+  } else if (ev.type === 'clear') {
+    ctx.fillStyle = 'white'; ctx.fillRect(0, 0, w, h);
+  }
+}
+
+document.getElementById('gsls-aide-clear')?.addEventListener('click', () => {
+  gslsAideDrawLocal({ type: 'clear' });
+  socket.emit('game:action', { type: 'aide_draw', event: { type: 'clear' } });
+});
+
+document.getElementById('gsls-aide-send')?.addEventListener('click', () => {
+  const canvas = document.getElementById('gsls-aide-draw-canvas');
+  if (!canvas) return;
+  const imageData = canvas.toDataURL('image/png');
+  socket.emit('game:action', { type: 'send_napkin', imageData });
+  // Clear canvas for next napkin
+  gslsAideDrawLocal({ type: 'clear' });
+  const cnt = document.getElementById('gsls-aide-napkin-count');
+  const n = parseInt(cnt.textContent) + 1 || 1;
+  cnt.textContent = `${n} sent`;
+  // Pulse the button
+  const btn = document.getElementById('gsls-aide-send');
+  btn.textContent = '✅ Napkin sent!';
+  setTimeout(() => { btn.textContent = '📜 Pass Napkin'; }, 1500);
+});
+
+// Aide color swatches within the aide screen
+document.querySelectorAll('#s-gsls-aide .color-swatch').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#s-gsls-aide .color-swatch').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    gslsAideColor = btn.dataset.color;
+    if (gslsAideColor === '#ffffff') gslsAideSize = 20;
+    else gslsAideSize = 6;
+  });
+});

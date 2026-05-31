@@ -36,10 +36,12 @@
 const crypto      = require('crypto');
 const SketchMatch = require('./games/SketchMatch');
 const TagGame     = require('./games/TagGame');
+const GslsGame    = require('./games/GslsGame');
 
 const GAMES = {
   'sketch-match': SketchMatch,
   'tag-out':      TagGame,
+  'gsls':         GslsGame,
 };
 
 const PLAYER_COLORS = [
