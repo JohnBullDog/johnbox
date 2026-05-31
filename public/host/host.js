@@ -108,10 +108,19 @@ function skipPhase() {
   socket.emit('game:next');
 }
 
-socket.on('room:created', ({ code }) => {
+socket.on('room:created', async ({ code }) => {
   roomCode = code;
   document.getElementById('lobby-code').textContent = code;
-  const joinUrl = `${location.origin}/play?code=${code}`;
+
+  // Use ngrok/public URL if the server knows one, otherwise fall back to current origin
+  let base = location.origin;
+  try {
+    const res  = await fetch('/api/public-url');
+    const data = await res.json();
+    if (data.url) base = data.url;
+  } catch { /* ignore — localhost fallback is fine */ }
+
+  const joinUrl = `${base}/play?code=${code}`;
   document.getElementById('lobby-url').textContent = joinUrl;
 
   const qrEl = document.getElementById('qr-code');

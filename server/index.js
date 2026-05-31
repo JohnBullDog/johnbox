@@ -12,7 +12,29 @@ const io = new Server(server, {
 
 const roomManager = new RoomManager(io);
 
+// Detect public URL: prefer explicit env var, then probe ngrok's local API
+let publicUrl = process.env.PUBLIC_URL || null;
+
+async function detectNgrokUrl() {
+  try {
+    const res  = await fetch('http://localhost:4040/api/tunnels');
+    const data = await res.json();
+    const tunnel = data.tunnels?.find(t => t.proto === 'https') ?? data.tunnels?.[0];
+    if (tunnel?.public_url) {
+      publicUrl = tunnel.public_url;
+      console.log(`  Public   : ${publicUrl}`);
+    }
+  } catch {
+    // ngrok not running — fall back to request origin on the client
+  }
+}
+
 app.use(express.static(path.join(__dirname, '../public')));
+
+// Clients call this to get the public base URL for QR codes / share links
+app.get('/api/public-url', (req, res) => {
+  res.json({ url: publicUrl });
+});
 
 // Host/TV screen
 app.get('/', (req, res) => {
@@ -36,11 +58,12 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', async () => {
   const ifaces = require('os').networkInterfaces();
   const lan = Object.values(ifaces).flat().find(i => i.family === 'IPv4' && !i.internal);
   console.log(`\nJohnBox running`);
   console.log(`  Host/TV  : http://localhost:${PORT}`);
-  console.log(`  Players  : http://${lan?.address ?? 'YOUR_LAN_IP'}:${PORT}/play`);
+  console.log(`  LAN      : http://${lan?.address ?? 'YOUR_LAN_IP'}:${PORT}/play`);
+  await detectNgrokUrl();
   console.log();
 });
