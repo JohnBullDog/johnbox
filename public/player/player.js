@@ -1446,6 +1446,9 @@ function orSelectCrime(crimeId) {
 
 function orHandleEvidenceCreate(d) {
   orMyRole = d.role;
+  // Re-enable submit buttons for each new round (they get disabled on submit)
+  document.querySelectorAll('#s-or-ev-create-text button, #s-or-ev-create-draw button')
+    .forEach(b => { if (!b.classList.contains('color-swatch')) b.disabled = false; });
   if (d.role === 'prosecutor') {
     if (d.evidenceType.input === 'draw') {
       showScreen('s-or-ev-create-draw');
@@ -1500,6 +1503,7 @@ function orEvidenceCardHtml(ev) {
 
 function orHandleEvidencePresent(d) {
   orMyRole = d.role;
+  document.querySelectorAll('#or-ev-present-action button').forEach(b => b.disabled = false);
   showScreen('s-or-ev-present');
   document.getElementById('or-ev-present-role-label').textContent = `Evidence ${d.evidenceRound}/3`;
   document.getElementById('or-ev-present-content').innerHTML = orEvidenceCardHtml(d.evidence);
@@ -1518,6 +1522,7 @@ function orHandleEvidencePresent(d) {
 
 function orHandleEvidenceRespond(d) {
   orMyRole = d.role;
+  document.querySelectorAll('#or-ev-respond-action button').forEach(b => b.disabled = false);
   showScreen('s-or-ev-respond');
   document.getElementById('or-ev-respond-role-label').textContent = `Evidence ${d.evidenceRound}/3 — Defence`;
   document.getElementById('or-ev-respond-content').innerHTML = d.role === 'defendant'
@@ -1542,6 +1547,7 @@ function orHandleObjRule(d) {
   document.getElementById('or-obj-rule-filer').textContent = `${d.filerName} objected to ${d.objection?.phase === 'present' ? 'the evidence' : 'the response'}`;
   const isJudge = d.role === 'judge';
   if (isJudge) {
+    document.querySelectorAll('#or-obj-rule-btns button').forEach(b => b.disabled = false);
     const g = document.getElementById('or-obj-rule-guidelines');
     g.innerHTML = `<strong style="color:var(--teal);">SUSTAIN if:</strong><br>${(d.sustainGuidelines||[]).map(s=>`• ${esc(s)}`).join('<br>')}<br><br><strong style="color:var(--coral);">OVERRULE if:</strong><br>${(d.overruleGuidelines||[]).map(s=>`• ${esc(s)}`).join('<br>')}`;
     document.getElementById('or-obj-rule-btns').style.display = 'flex';
