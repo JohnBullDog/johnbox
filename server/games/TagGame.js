@@ -3,13 +3,22 @@
  *
  * Flow per turn:
  *   spin_ready → spinning → adj_result | event_result → [event_resolve] →
- *   task_intro → skit → skit_result → [next turn or game_over]
+ *   task_intro → skit → performance_vote → skit_result → [next turn or game_over]
+ *
+ * Performer cap: never more than floor(playerCount/2), max 4.
+ * Tags: unlimited — each spin/event adds to the player's tag array.
+ *
+ * Scoring:
+ *   Performance rating (1–10 vote by non-performers) → avg × 25 pts
+ *   Failed tag penalty                                → −100 pts each
+ *   Immunity bonus (if immune)                        → +50 pts flat
+ *   Successful callout contribution                   → +30 pts per voter
  *
  * Input types:
- *   spin_ready   → player taps SPIN  (type: 'spin')
- *   event_resolve → player picks target player / adjective / submits audience vote
- *                   (type: 'event_choice' | 'event_choose_tag' | 'audience_vote')
- *   skit         → non-performers tap tags  (type: 'callout_tag', targetId, tag)
+ *   spin_ready       → player taps SPIN        (type: 'spin')
+ *   event_resolve    → pick target/adjective   (type: 'event_choice' | 'event_choose_tag' | 'audience_vote')
+ *   skit             → tap tags                (type: 'callout_tag', targetId, tag)
+ *   performance_vote → rate 1-10               (type: 'performance_vote', rating: number)
  *
  * Data files (add new entries to extend content):
  *   data/adjectives.json  — wheel adjective slots
@@ -25,14 +34,20 @@ const adjectives = require('../../data/adjectives.json');
 const events     = require('../../data/events.json');
 const tasks      = require('../../data/tasks.json');
 
-const T_SPIN_RESULT  = 5;   // seconds wheel spins before revealing
-const T_ADJ_RESULT   = 4;
-const T_EVENT_RESULT = 5;
-const T_EVENT_RESOLVE_AUTO = 30;  // auto-skip event resolution after 30s
-const T_TASK_INTRO   = 6;
-const T_SKIT         = 120;
-const T_SKIT_RESULT  = 8;
-const WHEEL_SEGMENTS = 24;
+const T_SPIN_RESULT        = 5;
+const T_ADJ_RESULT         = 4;
+const T_EVENT_RESULT       = 5;
+const T_EVENT_RESOLVE_AUTO = 30;
+const T_TASK_INTRO         = 6;
+const T_SKIT               = 120;
+const T_PERF_VOTE          = 20;   // seconds for performance rating
+const T_SKIT_RESULT        = 10;
+const WHEEL_SEGMENTS       = 24;
+
+const SCORE_PER_RATING_POINT = 25;   // avg rating 1-10 → ×25 pts
+const FAILED_TAG_PENALTY     = 100;  // per failed tag
+const IMMUNITY_BONUS         = 50;   // flat bonus if immune this turn
+const CALLOUT_REWARD         = 30;   // per voter who contributed to a majority
 
 class TagGame extends BaseGame {
   constructor(roomCode, io) {
@@ -50,8 +65,11 @@ class TagGame extends BaseGame {
     this.failedTags  = new Set();   // keys that reached majority
 
     // Event resolution state
-    this.pendingEvent = null;
+    this.pendingEvent  = null;
     this.audienceVotes = new Map(); // playerId → suggested adjective
+
+    // Performance vote state (set during performance_vote phase)
+    this.performanceVotes = new Map(); // voterId → rating 1-10
   }
 
   // ── Lifecycle ──────────────────────────────────────────────
@@ -66,14 +84,15 @@ class TagGame extends BaseGame {
   advance() {
     this.clearTimer();
     switch (this.phase) {
-      case 'spin_ready':    this._doSpin();            break;
-      case 'spinning':      this._showSpinResult();    break;
-      case 'adj_result':    this._beginTaskIntro();    break;
-      case 'event_result':  this._beginEventResolve(); break;
-      case 'event_resolve': this._afterEvent();        break;
-      case 'task_intro':    this._beginSkit();         break;
-      case 'skit':          this._endSkit();           break;
-      case 'skit_result':   this._nextTurn();          break;
+      case 'spin_ready':       this._doSpin();               break;
+      case 'spinning':         this._showSpinResult();       break;
+      case 'adj_result':       this._beginTaskIntro();       break;
+      case 'event_result':     this._beginEventResolve();    break;
+      case 'event_resolve':    this._afterEvent();           break;
+      case 'task_intro':       this._beginSkit();            break;
+      case 'skit':             this._endSkit();              break;
+      case 'performance_vote': this._finalizeSkitResult();   break;
+      case 'skit_result':      this._nextTurn();             break;
     }
   }
 
@@ -137,6 +156,36 @@ class TagGame extends BaseGame {
           this._handleCallout(player, data.targetId, data.tag);
         }
         break;
+
+      // ── Rate the performance (1–10) after the skit ─────────
+      case 'performance_vote': {
+        if (this.phase !== 'performance_vote') break;
+        const isPerformer = this.currentPerformers.some(p => p.id === player.id);
+        if (isPerformer || this.performanceVotes.has(player.id)) break;
+        const rating = Math.max(1, Math.min(10, Math.round(Number(data.rating))));
+        if (isNaN(rating)) break;
+
+        this.performanceVotes.set(player.id, rating);
+        this.send(player.id, 'player:phase', {
+          phase: 'performance_vote', role: 'voted', yourRating: rating,
+        });
+
+        const nonPerformers = this.players.filter(p =>
+          !this.currentPerformers.some(cp => cp.id === p.id)
+        );
+        const avg = this._avgVotes();
+        this.broadcast('host:vote_update', {
+          votesIn:   this.performanceVotes.size,
+          voterCount: nonPerformers.length,
+          avgRating:  +avg.toFixed(1),
+        });
+
+        if (this.performanceVotes.size >= nonPerformers.length) {
+          this.clearTimer();
+          this._finalizeSkitResult();
+        }
+        break;
+      }
     }
   }
 
@@ -402,29 +451,29 @@ class TagGame extends BaseGame {
     this.phase = 'task_intro';
     const spinner = this._currentPlayer();
 
-    // Pick task based on available player count
-    const candidates = tasks.filter(t =>
-      t.playerCount === 1 ||
-      (t.playerCount === 2 && this.players.length >= 2) ||
-      t.playerCount === 'all'
-    );
-    const task = candidates[Math.floor(Math.random() * candidates.length)];
+    // Cap performers at floor(n/2), max 4 — ensures audience always ≥ half
+    const maxPerformers = Math.min(4, Math.floor(this.players.length / 2));
 
-    // Assign performers
-    let performers = [spinner];
-    if (task.playerCount === 2) {
-      const others = this.players.filter(p => p.id !== spinner.id);
-      performers.push(others[Math.floor(Math.random() * others.length)]);
-    } else if (task.playerCount === 'all') {
-      performers = [...this.players];
-    }
+    const candidates = tasks.filter(t => {
+      const count = Number(t.playerCount);
+      return !isNaN(count) && count >= 1 && count <= maxPerformers;
+    });
+    // Fallback to solo if no tasks fit (e.g. tiny player count)
+    const pool = candidates.length > 0 ? candidates : tasks.filter(t => t.playerCount === 1);
+    const task = pool[Math.floor(Math.random() * pool.length)];
+
+    // Spinner is always P1; fill remaining slots from shuffled others
+    const others     = this._shuffle(this.players.filter(p => p.id !== spinner.id));
+    const performers = [spinner, ...others.slice(0, Number(task.playerCount) - 1)];
 
     this.currentPerformers = performers;
     this.currentTask       = {
       ...task,
       prompt: task.prompt
         .replace(/\{P1\}/g, performers[0]?.name ?? 'Player 1')
-        .replace(/\{P2\}/g, performers[1]?.name ?? 'Player 2'),
+        .replace(/\{P2\}/g, performers[1]?.name ?? 'Player 2')
+        .replace(/\{P3\}/g, performers[2]?.name ?? 'Player 3')
+        .replace(/\{P4\}/g, performers[3]?.name ?? 'Player 4'),
     };
 
     const performerIds = new Set(performers.map(p => p.id));
@@ -536,38 +585,77 @@ class TagGame extends BaseGame {
   }
 
   _endSkit() {
+    this.phase = 'performance_vote';
+    this.clearTimer();
+    this.performanceVotes.clear();
+
+    const performerIds  = new Set(this.currentPerformers.map(p => p.id));
+    const nonPerformers = this.players.filter(p => !performerIds.has(p.id));
+
+    this.broadcast('host:phase', {
+      phase:      'performance_vote',
+      performers: this.currentPerformers.map(p => this._pub(p)),
+      voterCount: nonPerformers.length,
+      votesIn:    0,
+      avgRating:  null,
+      timeLeft:   T_PERF_VOTE,
+    });
+
+    this.players.forEach(p => {
+      this.send(p.id, 'player:phase', {
+        phase:      'performance_vote',
+        role:       performerIds.has(p.id) ? 'performer' : 'voter',
+        performers: this.currentPerformers.map(q => this._pub(q)),
+        timeLeft:   T_PERF_VOTE,
+      });
+    });
+
+    this.startTimer(T_PERF_VOTE, () => this._finalizeSkitResult());
+  }
+
+  _finalizeSkitResult() {
     this.phase = 'skit_result';
     this.clearTimer();
 
+    const avgRating  = this._avgVotes();                       // 0-10 (0 if no votes)
+    const ratingPts  = Math.round(avgRating * SCORE_PER_RATING_POINT); // 0-250
+
     const performerResults = this.currentPerformers.map(p => {
-      const failedTagsForPlayer = p.tags.filter(tag =>
-        this.failedTags.has(`${p.id}:${tag}`)
-      );
-      const survivedTags = p.tags.filter(tag =>
-        !this.failedTags.has(`${p.id}:${tag}`)
-      );
-      const delta = (p.immune ? 100 : 0) + survivedTags.length * 100;
+      const failedTagsForPlayer = p.tags.filter(tag => this.failedTags.has(`${p.id}:${tag}`));
+      const survivedTags        = p.tags.filter(tag => !this.failedTags.has(`${p.id}:${tag}`));
+      const immuneBonus         = p.immune ? IMMUNITY_BONUS : 0;
+      const penalty             = failedTagsForPlayer.length * FAILED_TAG_PENALTY;
+      const delta               = Math.max(0, ratingPts + immuneBonus - penalty);
       p.score += delta;
-      p.immune = false;  // immunity consumed
-      return { ...this._pub(p), failedTags: failedTagsForPlayer, survivedTags, delta };
+      p.immune = false;
+      return {
+        ...this._pub(p),
+        failedTags: failedTagsForPlayer,
+        survivedTags,
+        ratingPts,
+        immuneBonus,
+        penalty,
+        delta,
+      };
     });
 
-    // Voters who contributed to a majority callout get points
+    // Reward voters who contributed to majority callouts
     this.failedTags.forEach(key => {
       const callers = this.callouts.get(key);
       if (callers) {
         callers.forEach(voterId => {
           const voter = this.players.find(p => p.id === voterId);
-          if (voter) { voter.score += 50; }
+          if (voter) voter.score += CALLOUT_REWARD;
         });
       }
     });
 
     const payload = {
-      phase:            'skit_result',
+      phase:          'skit_result',
+      avgRating:      +avgRating.toFixed(1),
+      ratingPts,
       performerResults,
-      allPlayers:       this._allPub(),
-      failedTagCount:   this.failedTags.size,
+      allPlayers:     this._allPub(),
     };
 
     this.broadcast('host:phase', payload);
@@ -579,6 +667,13 @@ class TagGame extends BaseGame {
     });
 
     this.startTimer(T_SKIT_RESULT, () => this._nextTurn());
+  }
+
+  _avgVotes() {
+    if (this.performanceVotes.size === 0) return 0;
+    let sum = 0;
+    this.performanceVotes.forEach(v => sum += v);
+    return sum / this.performanceVotes.size;
   }
 
   _nextTurn() {

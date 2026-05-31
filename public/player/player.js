@@ -84,9 +84,10 @@ socket.on('player:phase', (data) => {
     case 'event_result':  tgHandleEventResult(data);  return;
     case 'event_resolve': tgHandleEventResolve(data); return;
     case 'event_applied': tgHandleEventApplied(data); return;
-    case 'task_intro':    tgHandleTaskIntro(data);    return;
-    case 'skit':          tgHandleSkit(data);         return;
-    case 'skit_result':   tgHandleSkitResult(data);   return;
+    case 'task_intro':       tgHandleTaskIntro(data);   return;
+    case 'skit':             tgHandleSkit(data);        return;
+    case 'performance_vote': tgHandlePerfVote(data);    return;
+    case 'skit_result':      tgHandleSkitResult(data);  return;
     case 'game_over':
       if (data.players?.[0]?.tags !== undefined) { tgHandleGameOver(data); return; }
       break;
@@ -592,6 +593,41 @@ function tgHandleEventApplied(d) {
   showWaiting('✅', 'Tags updated!', 'Get ready for your task…');
 }
 
+function tgHandlePerfVote(d) {
+  if (d.role === 'performer') {
+    showWaiting('🎭', 'Skit over!', 'The audience is rating your performance…');
+    return;
+  }
+  if (d.role === 'voted') {
+    showWaiting('✅', `You rated: ${d.yourRating}/10`, 'Waiting for others…');
+    return;
+  }
+
+  // voter — show rating grid
+  showScreen('s-tg-perf-vote');
+
+  const perfEl = document.getElementById('tg-pv-performers-player');
+  perfEl.innerHTML = (d.performers || []).map(p =>
+    `<span style="background:${p.color}44;border:2px solid ${p.color};border-radius:10px;padding:6px 12px;font-weight:700;font-size:14px;">${esc(p.name)}</span>`
+  ).join('');
+
+  // Rating colours: 1-2 red, 3-4 orange, 5-6 yellow, 7-8 lime, 9-10 green
+  const colours = ['','#e63946','#e63946','#f4a261','#f4a261','#e9c46a','#e9c46a','#90be6d','#90be6d','#43aa8b','#2d9cdb'];
+  const grid = document.getElementById('tg-rating-grid');
+  grid.innerHTML = Array.from({ length: 10 }, (_, i) => {
+    const n = i + 1;
+    return `<button class="tg-rating-btn" style="background:${colours[n]};"
+      onclick="tgCastRating(${n}, this)">${n}</button>`;
+  }).join('');
+}
+
+function tgCastRating(rating, btn) {
+  document.querySelectorAll('.tg-rating-btn').forEach(b => b.disabled = true);
+  btn.style.outline = '3px solid white';
+  socket.emit('game:action', { type: 'performance_vote', rating });
+  showWaiting('✅', `You rated: ${rating}/10`, 'Waiting for others…');
+}
+
 function tgHandleTaskIntro(d) {
   showScreen('s-tg-task-intro');
   document.getElementById('tg-task-prompt').textContent = d.task.prompt;
@@ -625,17 +661,27 @@ function tgHandleSkit(d) {
 
 function tgHandleSkitResult(d) {
   showScreen('s-tg-skit-result');
-  const delta = d.myDelta ?? 0;
-  const myP   = d.allPlayers.find(p => myPlayer && p.id === myPlayer.id);
+  const delta   = d.myDelta ?? 0;
+  const myP     = d.allPlayers.find(p => myPlayer && p.id === myPlayer.id);
+  const myPerf  = d.performerResults?.find(r => myPlayer && r.id === myPlayer.id);
 
   document.getElementById('tg-sr-delta').textContent = delta > 0 ? `+${delta}` : delta === 0 ? '—' : `${delta}`;
   document.getElementById('tg-sr-msg').textContent   = delta > 0 ? 'Nice work!' : 'Better luck next time!';
-  document.getElementById('tg-sr-score').textContent = myP ? `Total: ${myP.score} pts` : '';
+
+  let scoreLines = myP ? `Total: ${myP.score} pts` : '';
+  if (myPerf) {
+    scoreLines = `⭐ ${d.avgRating}/10 → +${myPerf.ratingPts}`;
+    if (myPerf.immuneBonus) scoreLines += ` · 🛡️ +${myPerf.immuneBonus}`;
+    if (myPerf.penalty)     scoreLines += ` · ❌ −${myPerf.penalty}`;
+    scoreLines += `\nTotal: ${myP?.score ?? 0} pts`;
+  }
+  document.getElementById('tg-sr-score').textContent = scoreLines;
 
   const tagsEl = document.getElementById('tg-sr-tags');
-  tagsEl.innerHTML = (myP?.tags || []).map(t =>
-    `<div class="tg-tag-pill">${esc(t)}</div>`
-  ).join('') || '<span style="color:var(--muted);">No tags</span>';
+  tagsEl.innerHTML = (myP?.tags || []).map(t => {
+    const failed = myPerf?.failedTags?.includes(t);
+    return `<div class="tg-tag-pill" style="${failed ? 'background:#7a1a1a;text-decoration:line-through;' : ''}">${esc(t)}${failed ? ' ❌' : ''}</div>`;
+  }).join('') || '<span style="color:var(--muted);">No tags</span>';
 }
 
 function tgHandleGameOver(d) {

@@ -456,9 +456,10 @@ socket.on('host:phase', (data) => {
     case 'event_result':  tgHandleEventResult(data);  return;
     case 'event_resolve': tgHandleEventResolve(data); return;
     case 'event_applied': tgHandleEventApplied(data); return;
-    case 'task_intro':    tgHandleTaskIntro(data);    return;
-    case 'skit':          tgHandleSkit(data);         return;
-    case 'skit_result':   tgHandleSkitResult(data);   return;
+    case 'task_intro':       tgHandleTaskIntro(data);   return;
+    case 'skit':             tgHandleSkit(data);        return;
+    case 'performance_vote': tgHandlePerfVote(data);    return;
+    case 'skit_result':      tgHandleSkitResult(data);  return;
     case 'game_over':
       if (data.players?.[0]?.tags !== undefined) { tgHandleGameOver(data); return; }
       break;
@@ -596,17 +597,49 @@ function tgHandleSkit(d) {
   tgRenderSkitPerformers(d.performers, d.calloutData, d.threshold, d.nonPerformerCount);
 }
 
+function tgHandlePerfVote(d) {
+  showPhasePanel('p-tg-perf-vote');
+  timerMax = d.timeLeft;
+  document.getElementById('hdr-phase').textContent = 'Rate the performance!';
+  document.getElementById('tg-pv-avg').textContent  = '?';
+  document.getElementById('tg-pv-count').textContent = `0 / ${d.voterCount} voted`;
+  document.getElementById('tg-pv-bar').style.width = '0%';
+
+  const perfEl = document.getElementById('tg-pv-performers');
+  perfEl.innerHTML = d.performers.map(p => `
+    <div class="tg-spinner-badge" style="background:${p.color}44;border-left:4px solid ${p.color};">
+      ${esc(p.name)} ${p.immune ? '🛡️' : ''}
+    </div>
+  `).join('');
+}
+
+socket.on('host:vote_update', ({ votesIn, voterCount, avgRating }) => {
+  document.getElementById('tg-pv-avg').textContent   = avgRating.toFixed(1);
+  document.getElementById('tg-pv-count').textContent = `${votesIn} / ${voterCount} voted`;
+  document.getElementById('tg-pv-bar').style.width   = (votesIn / Math.max(voterCount, 1) * 100) + '%';
+});
+
 function tgHandleSkitResult(d) {
   showPhasePanel('p-tg-skit-result');
   timerMax = 8;
   document.getElementById('hdr-phase').textContent = 'Results';
 
+  // Rating banner
+  const ratingStars = '⭐'.repeat(Math.round(d.avgRating || 0));
+  document.getElementById('hdr-phase').textContent = `Results · ${d.avgRating}/10 ${ratingStars}`;
+
   const resEl = document.getElementById('tg-sr-results');
   resEl.innerHTML = d.performerResults.map(p => `
     <div class="performer-card ${p.immune ? 'immune-glow' : ''}" style="border-top:3px solid ${p.color};">
-      <div class="performer-card-name">${esc(p.name)} ${p.delta > 0 ? `<span style="color:var(--teal);font-size:14px;">+${p.delta}</span>` : ''}</div>
+      <div class="performer-card-name">${esc(p.name)}</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:4px;">
+        Rating: +${p.ratingPts}
+        ${p.immuneBonus ? ` · Immunity: +${p.immuneBonus}` : ''}
+        ${p.penalty ? ` · Failed tags: −${p.penalty}` : ''}
+        → <strong style="color:var(--teal);">+${p.delta}</strong>
+      </div>
       ${p.survivedTags.map(t => `<div class="performer-tag-row"><span>${esc(t)}</span><span style="color:var(--teal);">✓</span></div>`).join('')}
-      ${p.failedTags.map(t  => `<div class="performer-tag-row failed"><span>${esc(t)}</span><span style="color:var(--coral);">✗</span></div>`).join('')}
+      ${p.failedTags.map(t  => `<div class="performer-tag-row failed"><span>${esc(t)}</span><span style="color:var(--coral);">✗ −100</span></div>`).join('')}
     </div>
   `).join('');
 

@@ -751,6 +751,17 @@
       <div class="skit-performers" id="tg-skit-performers"></div>
     </div>
 
+    <!-- ── TagGame: Performance vote ────────────────────────── -->
+    <div id="p-tg-perf-vote" class="phase-panel" style="flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:32px;text-align:center;">
+      <div class="section-title">Rate the Performance!</div>
+      <div id="tg-pv-performers" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;"></div>
+      <div style="font-size:96px;font-weight:900;color:var(--teal);line-height:1;" id="tg-pv-avg">?</div>
+      <div style="font-size:20px;color:var(--muted);" id="tg-pv-count">Waiting for votes…</div>
+      <div style="width:100%;max-width:400px;background:var(--card);border-radius:12px;height:8px;overflow:hidden;">
+        <div id="tg-pv-bar" style="height:100%;background:var(--teal);width:0%;transition:width .3s;"></div>
+      </div>
+    </div>
+
     <!-- ── TagGame: Skit result ───────────────────────────── -->
     <div id="p-tg-skit-result" class="phase-panel">
       <div class="tg-right" style="max-width:100%;">

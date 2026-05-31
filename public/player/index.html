@@ -401,6 +401,29 @@
     .tg-callout-btn:disabled   { opacity: .5; cursor: default; }
     .tg-call-count { font-size: 13px; opacity: .8; white-space: nowrap; }
 
+    /* Performance vote */
+    #s-tg-perf-vote { gap: 16px; text-align: center; }
+    .tg-rating-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      width: 100%;
+      max-width: 340px;
+    }
+    .tg-rating-btn {
+      aspect-ratio: 1;
+      border: none;
+      border-radius: 12px;
+      font-size: 22px;
+      font-weight: 900;
+      cursor: pointer;
+      font-family: inherit;
+      color: white;
+      transition: transform .1s, opacity .15s;
+    }
+    .tg-rating-btn:active  { transform: scale(.9); }
+    .tg-rating-btn:disabled { opacity: .4; cursor: default; }
+
     /* Event chooser */
     #s-tg-event-choose { align-items: stretch; gap: 10px; overflow-y: auto; }
     .tg-choose-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; }
@@ -566,6 +589,14 @@
   <h2 style="font-size:20px;font-weight:800;text-align:center;" id="tg-ec-title"></h2>
   <p style="color:var(--muted);font-size:14px;text-align:center;" id="tg-ec-sub"></p>
   <div class="tg-choose-list" id="tg-ec-options"></div>
+</div>
+
+<!-- ── TagGame: Performance vote (rate 1-10) ─────────── -->
+<div id="s-tg-perf-vote" class="screen">
+  <p style="color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:2px;">Rate the performance</p>
+  <div id="tg-pv-performers-player" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;"></div>
+  <p style="color:var(--muted);font-size:14px;">How well did they stay in character?</p>
+  <div class="tg-rating-grid" id="tg-rating-grid"></div>
 </div>
 
 <!-- ── TagGame: Task intro ───────────────────────────── -->

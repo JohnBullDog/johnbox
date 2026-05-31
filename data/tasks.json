@@ -118,5 +118,41 @@
     "prompt": "{P1} is an experienced wilderness survival expert. {P2} booked what they thought was a luxury spa weekend.",
     "playerCount": 2,
     "category": "partner"
+  },
+  {
+    "id": "courtroom_3",
+    "prompt": "{P1} is on trial for something minor. {P2} is their lawyer who has never tried a case before. {P3} is the judge who desperately needs this to be over quickly.",
+    "playerCount": 3,
+    "category": "group"
+  },
+  {
+    "id": "expedition_3",
+    "prompt": "{P1}, {P2}, and {P3} are the last three members of a team attempting to summit a mountain. They must all agree on every decision or nothing happens.",
+    "playerCount": 3,
+    "category": "group"
+  },
+  {
+    "id": "game_show_3",
+    "prompt": "{P1} is a game show host. {P2} is a very competitive contestant. {P3} is an extremely unqualified contestant who keeps getting lucky.",
+    "playerCount": 3,
+    "category": "group"
+  },
+  {
+    "id": "heist_3",
+    "prompt": "{P1}, {P2}, and {P3} are planning a heist. They must agree on a plan, but each keeps suggesting something worse than the last.",
+    "playerCount": 3,
+    "category": "group"
+  },
+  {
+    "id": "press_conference_4",
+    "prompt": "{P1} holds a press conference. {P2}, {P3}, and {P4} are journalists asking increasingly personal and irrelevant questions.",
+    "playerCount": 4,
+    "category": "group"
+  },
+  {
+    "id": "lifeboat_4",
+    "prompt": "{P1}, {P2}, {P3}, and {P4} are on a lifeboat. They need to decide who rows, who bails water, who navigates, and who keeps morale up.",
+    "playerCount": 4,
+    "category": "group"
   }
 ]
